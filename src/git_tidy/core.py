@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from typing import Any, Dict, List, Optional, Set, TypedDict
+from typing import List, Optional, Set, TypedDict
 
 
 class CommitInfo(TypedDict):

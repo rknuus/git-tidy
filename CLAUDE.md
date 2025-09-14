@@ -19,11 +19,17 @@ uv pip install -e .
 
 ### Running the CLI
 ```bash
-# After installation, use the git-tidy command
-git-tidy [options]
+# After installation, use the git-tidy command with subcommands
+git-tidy group-commits [options]
 
 # Or run directly from source
-uv run python -m git_tidy.cli [options]
+uv run python -m git_tidy.cli group-commits [options]
+
+# Show help for all commands
+git-tidy --help
+
+# Show help for specific command
+git-tidy group-commits --help
 ```
 
 ### Development Commands
@@ -41,7 +47,12 @@ uv run mypy src/
 uv run black .
 ```
 
-### Available CLI options
+### Available Commands
+
+#### `group-commits`
+Groups commits by file similarity and reorders them.
+
+**Options:**
 - `--base BASE`: Specify base commit/branch for rebase range (defaults to merge-base with main/master)
 - `--threshold THRESHOLD`: Set similarity threshold (0.0-1.0, default: 0.3)
 - `--dry-run`: Show proposed grouping without performing the actual rebase
@@ -49,16 +60,16 @@ uv run black .
 ### Examples
 ```bash
 # Analyze and group commits with default settings
-git-tidy
+git-tidy group-commits
 
 # Preview grouping without making changes
-git-tidy --dry-run
+git-tidy group-commits --dry-run
 
 # Use custom similarity threshold
-git-tidy --threshold 0.5
+git-tidy group-commits --threshold 0.5
 
 # Specify custom base for rebase range
-git-tidy --base origin/main
+git-tidy group-commits --base origin/main
 ```
 
 ## Architecture

@@ -1,6 +1,6 @@
 # git-tidy
 
-A tool for intelligently reordering git commits by grouping them based on file similarity.
+A tool to automate complicated and tedious git operations, e.g. intelligently reordering git commits by grouping them based on file similarity.
 
 ## Installation
 
@@ -26,27 +26,52 @@ uv sync --dev
 
 ## Usage
 
-After installation, you can use the `git-tidy` command:
+After installation, you can use the `git-tidy` command with various subcommands:
 
 ```bash
-# Analyze and group commits with default settings
-git-tidy
+# Show available commands
+git-tidy --help
+
+# Group commits by file similarity (main feature)
+git-tidy group-commits
 
 # Preview grouping without making changes
-git-tidy --dry-run
+git-tidy group-commits --dry-run
 
 # Use custom similarity threshold
-git-tidy --threshold 0.5
+git-tidy group-commits --threshold 0.5
 
 # Specify custom base for rebase range
-git-tidy --base origin/main
+git-tidy group-commits --base origin/main
 ```
 
-### Options
+### Commands
 
+#### `group-commits`
+
+Groups commits by file similarity and reorders them while preserving relative order within each group.
+
+**Options:**
 - `--base BASE`: Specify base commit/branch for rebase range (defaults to merge-base with main/master)
 - `--threshold THRESHOLD`: Set similarity threshold (0.0-1.0, default: 0.3)
 - `--dry-run`: Show proposed grouping without performing the actual rebase
+
+**Examples:**
+```bash
+# Basic usage with default settings
+git-tidy group-commits
+
+# Preview changes only
+git-tidy group-commits --dry-run
+
+# Custom threshold for more/less grouping
+git-tidy group-commits --threshold 0.8  # stricter grouping
+git-tidy group-commits --threshold 0.1  # looser grouping
+
+# Specify base commit range
+git-tidy group-commits --base HEAD~10
+git-tidy group-commits --base origin/main
+```
 
 ## How it works
 
