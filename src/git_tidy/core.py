@@ -7,13 +7,13 @@ import os
 import subprocess
 import sys
 import tempfile
-from typing import List, Optional, Set, TypedDict
+from typing import Optional, TypedDict
 
 
 class CommitInfo(TypedDict):
     sha: str
     subject: str
-    files: Set[str]
+    files: set[str]
 
 
 class GitTidy:
@@ -23,7 +23,7 @@ class GitTidy:
         self.backup_branch: Optional[str] = None
 
     def run_git(
-        self, cmd: List[str], check_output: bool = True
+        self, cmd: list[str], check_output: bool = True
     ) -> subprocess.CompletedProcess[str]:
         """Run git command with error handling."""
         try:
@@ -58,7 +58,7 @@ class GitTidy:
             self.run_git(["branch", "-D", self.backup_branch], check_output=False)
             print(f"Cleaned up backup branch: {self.backup_branch}")
 
-    def get_commits_to_rebase(self, base_ref: Optional[str] = None) -> List[CommitInfo]:
+    def get_commits_to_rebase(self, base_ref: Optional[str] = None) -> list[CommitInfo]:
         """Get list of commits to reorder."""
         if base_ref is None:
             # Find merge base with main/master
@@ -79,7 +79,7 @@ class GitTidy:
             ["log", commit_range, "--pretty=format:%H|%s", "--reverse"]  # Oldest first
         )
 
-        commits: List[CommitInfo] = []
+        commits: list[CommitInfo] = []
         for line in result.stdout.strip().split("\n"):
             if line:
                 sha, subject = line.split("|", 1)
@@ -92,7 +92,7 @@ class GitTidy:
 
         return commits
 
-    def get_commit_files(self, sha: str) -> Set[str]:
+    def get_commit_files(self, sha: str) -> set[str]:
         """Get set of files changed in a commit."""
         result = self.run_git(["show", "--name-only", "--pretty=format:", sha])
         files = {
@@ -100,7 +100,7 @@ class GitTidy:
         }
         return files
 
-    def calculate_similarity(self, files1: Set[str], files2: Set[str]) -> float:
+    def calculate_similarity(self, files1: set[str], files2: set[str]) -> float:
         """Calculate Jaccard similarity between two sets of files."""
         if not files1 and not files2:
             return 1.0
@@ -112,8 +112,8 @@ class GitTidy:
         return intersection / union if union > 0 else 0.0
 
     def group_commits(
-        self, commits: List[CommitInfo], similarity_threshold: float = 0.3
-    ) -> List[List[CommitInfo]]:
+        self, commits: list[CommitInfo], similarity_threshold: float = 0.3
+    ) -> list[list[CommitInfo]]:
         """Group commits based on file similarity using a greedy approach."""
         if not commits:
             return []
@@ -148,7 +148,7 @@ class GitTidy:
 
         return groups
 
-    def create_rebase_todo(self, groups: List[List[CommitInfo]]) -> str:
+    def create_rebase_todo(self, groups: list[list[CommitInfo]]) -> str:
         """Create interactive rebase todo list."""
         todo_lines = []
 
@@ -164,7 +164,7 @@ class GitTidy:
 
         return "\n".join(todo_lines)
 
-    def describe_group(self, group: List[CommitInfo]) -> str:
+    def describe_group(self, group: list[CommitInfo]) -> str:
         """Create a description for a group of commits."""
         all_files = set()
         for commit in group:
@@ -176,7 +176,7 @@ class GitTidy:
             sample_files = sorted(all_files)[:3]
             return f"Files: {', '.join(sample_files)} and {len(all_files) - 3} more"
 
-    def perform_rebase(self, groups: List[List[CommitInfo]]) -> bool:
+    def perform_rebase(self, groups: list[list[CommitInfo]]) -> bool:
         """Perform the actual rebase operation."""
         if len(groups) <= 1:
             print("No grouping needed - commits are already optimally ordered")
