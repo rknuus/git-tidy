@@ -97,3 +97,10 @@ addopts = [
     "--strict-config",
     "-ra",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+    "pytest>=8.3.5",
+    "ruff>=0.13.0",
+]
