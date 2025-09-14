@@ -23,12 +23,19 @@ class GitTidy:
         self.backup_branch: Optional[str] = None
 
     def run_git(
-        self, cmd: list[str], check_output: bool = True, env: Optional[dict[str, str]] = None
+        self,
+        cmd: list[str],
+        check_output: bool = True,
+        env: Optional[dict[str, str]] = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run git command with error handling."""
         try:
             result = subprocess.run(
-                ["git"] + cmd, capture_output=True, text=True, check=check_output, env=env
+                ["git"] + cmd,
+                capture_output=True,
+                text=True,
+                check=check_output,
+                env=env,
             )
             return result
         except subprocess.CalledProcessError as e:
@@ -214,7 +221,9 @@ class GitTidy:
             env = os.environ.copy()
             env["GIT_SEQUENCE_EDITOR"] = f"cp {todo_file}"
 
-            result = self.run_git(["rebase", "-i", base_commit], check_output=False, env=env)
+            result = self.run_git(
+                ["rebase", "-i", base_commit], check_output=False, env=env
+            )
 
             if result.returncode != 0:
                 print(f"Rebase failed: {result.stderr}")
@@ -238,6 +247,7 @@ class GitTidy:
             commits = self.get_commits_to_rebase(base_ref)
             if not commits:
                 print("No commits found to rebase")
+                self.cleanup_backup()
                 return
 
             print(f"Found {len(commits)} commits to analyze")
