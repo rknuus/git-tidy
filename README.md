@@ -95,6 +95,33 @@ This project uses:
 
 ### Development commands
 
+The project includes a comprehensive Makefile for common development tasks:
+
+```bash
+# Show all available commands
+make help
+
+# Set up development environment
+make dev-setup
+
+# Run all quality checks (lint, typecheck, format-check)
+make quality-checks
+
+# Fix code quality issues automatically
+make quality-fix
+
+# Run tests
+make test
+
+# Run all CI checks (quality + tests)
+make ci-checks
+
+# Clean up build artifacts
+make clean
+```
+
+#### Manual commands (without Makefile)
+
 ```bash
 # Install development dependencies
 uv sync --dev

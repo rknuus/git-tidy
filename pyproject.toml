@@ -102,6 +102,7 @@ addopts = [
 
 [dependency-groups]
 dev = [
+    "black>=22.0",
     "mypy>=1.14.1",
     "pytest>=8.3.5",
     "ruff>=0.13.0",

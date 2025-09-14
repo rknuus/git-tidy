@@ -22,39 +22,40 @@ class GitTidy:
         self.original_head: Optional[str] = None
         self.backup_branch: Optional[str] = None
 
-    def run_git(self, cmd: List[str], check_output: bool = True) -> subprocess.CompletedProcess[str]:
+    def run_git(
+        self, cmd: List[str], check_output: bool = True
+    ) -> subprocess.CompletedProcess[str]:
         """Run git command with error handling."""
         try:
             result = subprocess.run(
-                ['git'] + cmd,
-                capture_output=True,
-                text=True,
-                check=check_output
+                ["git"] + cmd, capture_output=True, text=True, check=check_output
             )
             return result
         except subprocess.CalledProcessError as e:
-            raise GitError(f"Git command failed: {' '.join(cmd)}\nError: {e.stderr}") from e
+            raise GitError(
+                f"Git command failed: {' '.join(cmd)}\nError: {e.stderr}"
+            ) from e
 
     def create_backup(self) -> None:
         """Create a backup branch at current HEAD."""
-        self.original_branch = self.run_git(['branch', '--show-current']).stdout.strip()
-        self.original_head = self.run_git(['rev-parse', 'HEAD']).stdout.strip()
+        self.original_branch = self.run_git(["branch", "--show-current"]).stdout.strip()
+        self.original_head = self.run_git(["rev-parse", "HEAD"]).stdout.strip()
         self.backup_branch = f"backup-{self.original_head[:8]}"
 
-        self.run_git(['branch', self.backup_branch, 'HEAD'])
+        self.run_git(["branch", self.backup_branch, "HEAD"])
         print(f"Created backup branch: {self.backup_branch}")
 
     def restore_from_backup(self) -> None:
         """Restore to original state if something goes wrong."""
         if self.backup_branch and self.original_head:
             print("Restoring from backup due to error...")
-            self.run_git(['reset', '--hard', self.original_head])
-            self.run_git(['branch', '-D', self.backup_branch], check_output=False)
+            self.run_git(["reset", "--hard", self.original_head])
+            self.run_git(["branch", "-D", self.backup_branch], check_output=False)
 
     def cleanup_backup(self) -> None:
         """Clean up backup branch after successful operation."""
         if self.backup_branch:
-            self.run_git(['branch', '-D', self.backup_branch], check_output=False)
+            self.run_git(["branch", "-D", self.backup_branch], check_output=False)
             print(f"Cleaned up backup branch: {self.backup_branch}")
 
     def get_commits_to_rebase(self, base_ref: Optional[str] = None) -> List[CommitInfo]:
@@ -62,30 +63,30 @@ class GitTidy:
         if base_ref is None:
             # Find merge base with main/master
             try:
-                base_ref = self.run_git(['merge-base', 'HEAD', 'main']).stdout.strip()
+                base_ref = self.run_git(["merge-base", "HEAD", "main"]).stdout.strip()
             except GitError:
                 try:
-                    base_ref = self.run_git(['merge-base', 'HEAD', 'master']).stdout.strip()
+                    base_ref = self.run_git(
+                        ["merge-base", "HEAD", "master"]
+                    ).stdout.strip()
                 except GitError:
                     # Fallback to last 10 commits
-                    base_ref = 'HEAD~10'
+                    base_ref = "HEAD~10"
 
         # Get commit range
         commit_range = f"{base_ref}..HEAD"
-        result = self.run_git([
-            'log', commit_range,
-            '--pretty=format:%H|%s',
-            '--reverse'  # Oldest first
-        ])
+        result = self.run_git(
+            ["log", commit_range, "--pretty=format:%H|%s", "--reverse"]  # Oldest first
+        )
 
         commits: List[CommitInfo] = []
-        for line in result.stdout.strip().split('\n'):
+        for line in result.stdout.strip().split("\n"):
             if line:
-                sha, subject = line.split('|', 1)
+                sha, subject = line.split("|", 1)
                 commit_info: CommitInfo = {
-                    'sha': sha,
-                    'subject': subject,
-                    'files': self.get_commit_files(sha)
+                    "sha": sha,
+                    "subject": subject,
+                    "files": self.get_commit_files(sha),
                 }
                 commits.append(commit_info)
 
@@ -93,8 +94,10 @@ class GitTidy:
 
     def get_commit_files(self, sha: str) -> Set[str]:
         """Get set of files changed in a commit."""
-        result = self.run_git(['show', '--name-only', '--pretty=format:', sha])
-        files = {line.strip() for line in result.stdout.strip().split('\n') if line.strip()}
+        result = self.run_git(["show", "--name-only", "--pretty=format:", sha])
+        files = {
+            line.strip() for line in result.stdout.strip().split("\n") if line.strip()
+        }
         return files
 
     def calculate_similarity(self, files1: Set[str], files2: Set[str]) -> float:
@@ -108,7 +111,9 @@ class GitTidy:
         union = len(files1.union(files2))
         return intersection / union if union > 0 else 0.0
 
-    def group_commits(self, commits: List[CommitInfo], similarity_threshold: float = 0.3) -> List[List[CommitInfo]]:
+    def group_commits(
+        self, commits: List[CommitInfo], similarity_threshold: float = 0.3
+    ) -> List[List[CommitInfo]]:
         """Group commits based on file similarity using a greedy approach."""
         if not commits:
             return []
@@ -131,7 +136,7 @@ class GitTidy:
 
                 # Check similarity with any commit in current group
                 max_similarity = max(
-                    self.calculate_similarity(commit['files'], commits[j]['files'])
+                    self.calculate_similarity(commit["files"], commits[j]["files"])
                     for commit in current_group
                 )
 
@@ -149,19 +154,21 @@ class GitTidy:
 
         for group_idx, group in enumerate(groups):
             if group_idx > 0:
-                todo_lines.append(f"# Group {group_idx + 1}: {self.describe_group(group)}")
+                todo_lines.append(
+                    f"# Group {group_idx + 1}: {self.describe_group(group)}"
+                )
 
             for _commit_idx, commit in enumerate(group):
                 action = "pick"
                 todo_lines.append(f"{action} {commit['sha'][:8]} {commit['subject']}")
 
-        return '\n'.join(todo_lines)
+        return "\n".join(todo_lines)
 
     def describe_group(self, group: List[CommitInfo]) -> str:
         """Create a description for a group of commits."""
         all_files = set()
         for commit in group:
-            all_files.update(commit['files'])
+            all_files.update(commit["files"])
 
         if len(all_files) <= 3:
             return f"Files: {', '.join(sorted(all_files))}"
@@ -179,31 +186,35 @@ class GitTidy:
         todo_content = self.create_rebase_todo(groups)
 
         # Get base commit
-        first_commit_sha = groups[0][0]['sha']
-        base_commit = self.run_git(['rev-parse', f"{first_commit_sha}^"]).stdout.strip()
+        first_commit_sha = groups[0][0]["sha"]
+        base_commit = self.run_git(["rev-parse", f"{first_commit_sha}^"]).stdout.strip()
 
-        print(f"Rebasing {sum(len(g) for g in groups)} commits into {len(groups)} groups...")
+        print(
+            f"Rebasing {sum(len(g) for g in groups)} commits into {len(groups)} groups..."
+        )
         print("\nProposed grouping:")
         for i, group in enumerate(groups):
-            print(f"  Group {i + 1}: {len(group)} commits - {self.describe_group(group)}")
+            print(
+                f"  Group {i + 1}: {len(group)} commits - {self.describe_group(group)}"
+            )
 
         # Confirm with user
         response = input("\nProceed with rebase? (y/N): ")
-        if response.lower() != 'y':
+        if response.lower() != "y":
             print("Rebase cancelled")
             return False
 
         # Write todo to temporary file and start interactive rebase
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write(todo_content)
             todo_file = f.name
 
         try:
             # Set up environment for non-interactive rebase
             env = os.environ.copy()
-            env['GIT_SEQUENCE_EDITOR'] = f'cp {todo_file}'
+            env["GIT_SEQUENCE_EDITOR"] = f"cp {todo_file}"
 
-            result = self.run_git(['rebase', '-i', base_commit], check_output=False)
+            result = self.run_git(["rebase", "-i", base_commit], check_output=False)
 
             if result.returncode != 0:
                 print(f"Rebase failed: {result.stderr}")
@@ -215,7 +226,9 @@ class GitTidy:
         finally:
             os.unlink(todo_file)
 
-    def run(self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3) -> None:
+    def run(
+        self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3
+    ) -> None:
         """Main execution function."""
         try:
             # Create backup
@@ -245,7 +258,8 @@ class GitTidy:
             self.restore_from_backup()
             sys.exit(1)
 
+
 class GitError(Exception):
     """Custom exception for git-related errors."""
-    pass
 
+    pass

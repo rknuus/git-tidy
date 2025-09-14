@@ -33,6 +33,32 @@ git-tidy group-commits --help
 ```
 
 ### Development Commands
+
+**Using Makefile (recommended):**
+```bash
+# Show all available commands
+make help
+
+# Set up development environment
+make dev-setup
+
+# Run all quality checks
+make quality-checks
+
+# Fix code quality issues
+make quality-fix
+
+# Run tests
+make test
+
+# Run full CI pipeline
+make ci-checks
+
+# Clean build artifacts
+make clean
+```
+
+**Manual commands:**
 ```bash
 # Run tests
 uv run pytest
