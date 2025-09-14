@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Git-tidy is a Python package that provides tools for intelligently reordering git commits by grouping them based on file similarity. The project is structured as a proper Python package with uv support and can be published to PyPI.
 
+## For Claude
+- **Quality Checks**: After having changed code, all tests and quality checks must pass.
+
 ## Commands
 
 ### Development Setup
