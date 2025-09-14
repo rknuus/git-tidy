@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Git-tidy is a Python script that intelligently reorders git commits by grouping them based on file similarity. The tool analyzes commit history and groups commits that touch similar files together while preserving the relative order within each group.
+Git-tidy is a Python script that will support several git tidy up operations such as intelligently reorders git commits by grouping them based on file similarity.
 
 ## Commands
 
