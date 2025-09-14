@@ -2,6 +2,6 @@
 
 __version__ = "0.1.0"
 
-from .core import GitTidy, GitError
+from .core import GitError, GitTidy
 
 __all__ = ["GitTidy", "GitError"]

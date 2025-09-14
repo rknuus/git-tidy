@@ -1,7 +1,6 @@
 """Tests for git-tidy core functionality."""
 
-import pytest
-from git_tidy.core import GitTidy, GitError
+from git_tidy.core import GitTidy
 
 
 def test_calculate_similarity():

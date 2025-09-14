@@ -1,7 +1,6 @@
 """Command-line interface for git-tidy."""
 
 import argparse
-import sys
 
 from .core import GitTidy
 
