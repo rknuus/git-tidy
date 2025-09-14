@@ -7,16 +7,22 @@ import os
 import subprocess
 import sys
 import tempfile
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Optional, Set, TypedDict
+
+
+class CommitInfo(TypedDict):
+    sha: str
+    subject: str
+    files: Set[str]
 
 
 class GitTidy:
-    def __init__(self):
-        self.original_branch = None
-        self.original_head = None
-        self.backup_branch = None
+    def __init__(self) -> None:
+        self.original_branch: Optional[str] = None
+        self.original_head: Optional[str] = None
+        self.backup_branch: Optional[str] = None
 
-    def run_git(self, cmd: List[str], check_output=True) -> subprocess.CompletedProcess:
+    def run_git(self, cmd: List[str], check_output: bool = True) -> subprocess.CompletedProcess[str]:
         """Run git command with error handling."""
         try:
             result = subprocess.run(
@@ -29,7 +35,7 @@ class GitTidy:
         except subprocess.CalledProcessError as e:
             raise GitError(f"Git command failed: {' '.join(cmd)}\nError: {e.stderr}") from e
 
-    def create_backup(self):
+    def create_backup(self) -> None:
         """Create a backup branch at current HEAD."""
         self.original_branch = self.run_git(['branch', '--show-current']).stdout.strip()
         self.original_head = self.run_git(['rev-parse', 'HEAD']).stdout.strip()
@@ -38,20 +44,20 @@ class GitTidy:
         self.run_git(['branch', self.backup_branch, 'HEAD'])
         print(f"Created backup branch: {self.backup_branch}")
 
-    def restore_from_backup(self):
+    def restore_from_backup(self) -> None:
         """Restore to original state if something goes wrong."""
         if self.backup_branch and self.original_head:
             print("Restoring from backup due to error...")
             self.run_git(['reset', '--hard', self.original_head])
             self.run_git(['branch', '-D', self.backup_branch], check_output=False)
 
-    def cleanup_backup(self):
+    def cleanup_backup(self) -> None:
         """Clean up backup branch after successful operation."""
         if self.backup_branch:
             self.run_git(['branch', '-D', self.backup_branch], check_output=False)
             print(f"Cleaned up backup branch: {self.backup_branch}")
 
-    def get_commits_to_rebase(self, base_ref: str = None) -> List[Dict]:
+    def get_commits_to_rebase(self, base_ref: Optional[str] = None) -> List[CommitInfo]:
         """Get list of commits to reorder."""
         if base_ref is None:
             # Find merge base with main/master
@@ -72,15 +78,16 @@ class GitTidy:
             '--reverse'  # Oldest first
         ])
 
-        commits = []
+        commits: List[CommitInfo] = []
         for line in result.stdout.strip().split('\n'):
             if line:
                 sha, subject = line.split('|', 1)
-                commits.append({
+                commit_info: CommitInfo = {
                     'sha': sha,
                     'subject': subject,
                     'files': self.get_commit_files(sha)
-                })
+                }
+                commits.append(commit_info)
 
         return commits
 
@@ -101,7 +108,7 @@ class GitTidy:
         union = len(files1.union(files2))
         return intersection / union if union > 0 else 0.0
 
-    def group_commits(self, commits: List[Dict], similarity_threshold: float = 0.3) -> List[List[Dict]]:
+    def group_commits(self, commits: List[CommitInfo], similarity_threshold: float = 0.3) -> List[List[CommitInfo]]:
         """Group commits based on file similarity using a greedy approach."""
         if not commits:
             return []
@@ -136,7 +143,7 @@ class GitTidy:
 
         return groups
 
-    def create_rebase_todo(self, groups: List[List[Dict]]) -> str:
+    def create_rebase_todo(self, groups: List[List[CommitInfo]]) -> str:
         """Create interactive rebase todo list."""
         todo_lines = []
 
@@ -150,7 +157,7 @@ class GitTidy:
 
         return '\n'.join(todo_lines)
 
-    def describe_group(self, group: List[Dict]) -> str:
+    def describe_group(self, group: List[CommitInfo]) -> str:
         """Create a description for a group of commits."""
         all_files = set()
         for commit in group:
@@ -162,7 +169,7 @@ class GitTidy:
             sample_files = sorted(all_files)[:3]
             return f"Files: {', '.join(sample_files)} and {len(all_files) - 3} more"
 
-    def perform_rebase(self, groups: List[List[Dict]]) -> bool:
+    def perform_rebase(self, groups: List[List[CommitInfo]]) -> bool:
         """Perform the actual rebase operation."""
         if len(groups) <= 1:
             print("No grouping needed - commits are already optimally ordered")
@@ -208,7 +215,7 @@ class GitTidy:
         finally:
             os.unlink(todo_file)
 
-    def run(self, base_ref: str = None, similarity_threshold: float = 0.3):
+    def run(self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3) -> None:
         """Main execution function."""
         try:
             # Create backup
