@@ -4,16 +4,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Git-tidy is a Python script that will support several git tidy up operations such as intelligently reorders git commits by grouping them based on file similarity.
+Git-tidy is a Python package that provides tools for intelligently reordering git commits by grouping them based on file similarity. The project is structured as a proper Python package with uv support and can be published to PyPI.
 
 ## Commands
 
-### Running the script
+### Development Setup
 ```bash
-python3 git-tidy.py [options]
+# Install with development dependencies
+uv sync --dev
+
+# Install package in development mode
+uv pip install -e .
 ```
 
-### Available options
+### Running the CLI
+```bash
+# After installation, use the git-tidy command
+git-tidy [options]
+
+# Or run directly from source
+uv run python -m git_tidy.cli [options]
+```
+
+### Development Commands
+```bash
+# Run tests
+uv run pytest
+
+# Run linting
+uv run ruff check .
+
+# Run type checking
+uv run mypy src/
+
+# Format code
+uv run black .
+```
+
+### Available CLI options
 - `--base BASE`: Specify base commit/branch for rebase range (defaults to merge-base with main/master)
 - `--threshold THRESHOLD`: Set similarity threshold (0.0-1.0, default: 0.3)
 - `--dry-run`: Show proposed grouping without performing the actual rebase
@@ -21,23 +49,23 @@ python3 git-tidy.py [options]
 ### Examples
 ```bash
 # Analyze and group commits with default settings
-python3 git-tidy.py
+git-tidy
 
 # Preview grouping without making changes
-python3 git-tidy.py --dry-run
+git-tidy --dry-run
 
 # Use custom similarity threshold
-python3 git-tidy.py --threshold 0.5
+git-tidy --threshold 0.5
 
 # Specify custom base for rebase range
-python3 git-tidy.py --base origin/main
+git-tidy --base origin/main
 ```
 
 ## Architecture
 
 ### Core Components
 
-**GitTidy Class** (`git-tidy.py:16-243`):
+**GitTidy Class** (`src/git_tidy/core.py:16-243`):
 - Main orchestrator that handles the entire workflow
 - Manages git operations, backup/restore functionality, and user interaction
 
@@ -67,15 +95,32 @@ similarity = |files1 ∩ files2| / |files1 ∪ files2|
 - **User confirmation**: Prompts before executing rebase
 - **Dry-run mode**: Preview changes without modification
 
+### Package Structure
+
+```
+src/git_tidy/
+├── __init__.py          # Package exports
+├── core.py              # Main GitTidy class and logic
+└── cli.py               # Command-line interface
+
+tests/
+├── __init__.py
+└── test_core.py         # Unit tests for core functionality
+```
+
 ### Dependencies
 
-- Python 3.x (uses type hints, f-strings)
+- Python 3.8+ (uses type hints, f-strings)
 - Standard library only: subprocess, sys, json, typing, collections, tempfile, os
 - Git (executed via subprocess calls)
+- Development dependencies: pytest, black, ruff, mypy
 
 ## Development Notes
 
-- Single-file Python script with no external dependencies
+- Proper Python package structure with src/ layout
+- Uses uv for dependency management and packaging
+- CLI entry point defined in pyproject.toml
 - Uses subprocess to interact with git commands
 - Implements custom GitError exception for git operation failures
 - Interactive rebase performed via temporary todo file and GIT_SEQUENCE_EDITOR
+- Includes basic unit tests for core functionality
