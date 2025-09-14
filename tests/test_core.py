@@ -101,7 +101,7 @@ class TestGitTidy:
 
         assert result == mock_result
         mock_run.assert_called_once_with(
-            ["git", "status"], capture_output=True, text=True, check=True
+            ["git", "status"], capture_output=True, text=True, check=True, env=None
         )
 
     @patch("subprocess.run")
@@ -128,7 +128,7 @@ class TestGitTidy:
 
         assert result == mock_result
         mock_run.assert_called_once_with(
-            ["git", "status"], capture_output=True, text=True, check=False
+            ["git", "status"], capture_output=True, text=True, check=False, env=None
         )
 
     @patch.object(GitTidy, "run_git")
