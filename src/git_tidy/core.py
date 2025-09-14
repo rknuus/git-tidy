@@ -56,6 +56,22 @@ class GitTidy:
         """Restore to original state if something goes wrong."""
         if self.backup_branch and self.original_head:
             print("Restoring from backup due to error...")
+
+            # Check if we're in the middle of a rebase and abort it first
+            try:
+                status_result = self.run_git(
+                    ["status", "--porcelain=v1"], check_output=False
+                )
+                if status_result.returncode == 0:
+                    # Check if rebase is in progress
+                    rebase_head_path = ".git/REBASE_HEAD"
+                    if os.path.exists(rebase_head_path):
+                        print("Aborting incomplete rebase...")
+                        self.run_git(["rebase", "--abort"], check_output=False)
+            except GitError:
+                # If status check fails, continue with reset anyway
+                pass
+
             self.run_git(["reset", "--hard", self.original_head])
             self.run_git(["branch", "-D", self.backup_branch], check_output=False)
 

@@ -148,21 +148,52 @@ class TestGitTidy:
         assert self.git_tidy.backup_branch == "backup-abcd1234"
         mock_print.assert_called_once_with("Created backup branch: backup-abcd1234")
 
+    @patch("os.path.exists")
     @patch.object(GitTidy, "run_git")
-    def test_restore_from_backup(self, mock_run_git):
+    def test_restore_from_backup(self, mock_run_git, mock_exists):
         """Test restore from backup."""
         self.git_tidy.backup_branch = "backup-abcd1234"
         self.git_tidy.original_head = "abcd1234567890"
 
-        with patch("builtins.print") as mock_print:
+        # Mock git status to return success but no rebase in progress
+        mock_run_git.return_value.returncode = 0
+        mock_exists.return_value = False
+
+        with patch("builtins.print"):
             self.git_tidy.restore_from_backup()
 
-        assert mock_run_git.call_count == 2
+        assert mock_run_git.call_count == 3  # status, reset, branch delete
+        mock_run_git.assert_any_call(["status", "--porcelain=v1"], check_output=False)
         mock_run_git.assert_any_call(["reset", "--hard", "abcd1234567890"])
         mock_run_git.assert_any_call(
             ["branch", "-D", "backup-abcd1234"], check_output=False
         )
-        mock_print.assert_called_once_with("Restoring from backup due to error...")
+
+    @patch("os.path.exists")
+    @patch.object(GitTidy, "run_git")
+    def test_restore_from_backup_with_rebase_in_progress(
+        self, mock_run_git, mock_exists
+    ):
+        """Test restore from backup when rebase is in progress."""
+        self.git_tidy.backup_branch = "backup-abcd1234"
+        self.git_tidy.original_head = "abcd1234567890"
+
+        # Mock git status to return success and rebase in progress
+        mock_run_git.return_value.returncode = 0
+        mock_exists.return_value = True
+
+        with patch("builtins.print"):
+            self.git_tidy.restore_from_backup()
+
+        assert (
+            mock_run_git.call_count == 4
+        )  # status, rebase abort, reset, branch delete
+        mock_run_git.assert_any_call(["status", "--porcelain=v1"], check_output=False)
+        mock_run_git.assert_any_call(["rebase", "--abort"], check_output=False)
+        mock_run_git.assert_any_call(["reset", "--hard", "abcd1234567890"])
+        mock_run_git.assert_any_call(
+            ["branch", "-D", "backup-abcd1234"], check_output=False
+        )
 
     @patch.object(GitTidy, "run_git")
     def test_cleanup_backup(self, mock_run_git):
