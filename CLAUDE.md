@@ -24,15 +24,21 @@ uv pip install -e .
 ```bash
 # After installation, use the git-tidy command with subcommands
 git-tidy group-commits [options]
+git-tidy split-commits [options]
+git-tidy squash-all [options]
 
 # Or run directly from source
 uv run python -m git_tidy.cli group-commits [options]
+uv run python -m git_tidy.cli split-commits [options]
+uv run python -m git_tidy.cli squash-all [options]
 
 # Show help for all commands
 git-tidy --help
 
 # Show help for specific command
 git-tidy group-commits --help
+git-tidy split-commits --help
+git-tidy squash-all --help
 ```
 
 ### Development Commands
@@ -79,12 +85,25 @@ uv run black .
 ### Available Commands
 
 #### `group-commits`
-Groups commits by file similarity and reorders them.
+Groups commits by file similarity and reorders them while preserving order within each group.
 
 **Options:**
 - `--base BASE`: Specify base commit/branch for rebase range (defaults to merge-base with main/master)
 - `--threshold THRESHOLD`: Set similarity threshold (0.0-1.0, default: 0.3)
-- `--dry-run`: Show proposed grouping without performing the actual rebase
+- `--dry-run`: Show proposed grouping without performing the rebase
+
+#### `split-commits`
+Splits each commit in the range into separate commits, one per file.
+
+**Options:**
+- `--base BASE`: Specify base commit/branch for rebase range (defaults to merge-base with main/master)
+- `--dry-run`: Show proposed splitting without performing the rebase
+
+#### `squash-all`
+Prints safe commands to squash all commits in the range into a single commit.
+
+**Options:**
+- `--base BASE`: Specify base commit/branch for the range (defaults to merge-base with main/master)
 
 ### Examples
 ```bash
@@ -99,21 +118,31 @@ git-tidy group-commits --threshold 0.5
 
 # Specify custom base for rebase range
 git-tidy group-commits --base origin/main
+
+# Preview how commits would be split into per-file commits
+git-tidy split-commits --dry-run
+
+# Split using a specific range base
+git-tidy split-commits --base HEAD~10
+
+# Show instructions to squash all commits into one
+git-tidy squash-all --base origin/main
 ```
 
 ## Architecture
 
 ### Core Components
 
-**GitTidy Class** (`src/git_tidy/core.py:16-243`):
-- Main orchestrator that handles the entire workflow
-- Manages git operations, backup/restore functionality, and user interaction
+**GitTidy Class** (`src/git_tidy/core.py`):
+- Orchestrates workflows for grouping, splitting, and squash guidance
+- Manages git operations, backup/restore, and user interaction
 
 **Key Methods**:
-- `get_commits_to_rebase()`: Identifies commit range from base to HEAD, defaults to merge-base with main/master
-- `group_commits()`: Uses greedy algorithm with Jaccard similarity to group commits by file overlap
-- `calculate_similarity()`: Computes file similarity using Jaccard index (intersection/union)
-- `perform_rebase()`: Executes interactive rebase using generated todo list
+- `get_commits_to_rebase(base_ref)`: Identifies commit range and gathers changed files
+- `group_commits(commits, threshold)`: Greedy grouping by Jaccard similarity
+- `calculate_similarity(files1, files2)`: Jaccard index (|∩|/|∪|)
+- `create_rebase_todo(groups)`, `perform_rebase(groups)`: Interactive rebase using generated todo
+- `split_commits(base_ref)`, `perform_split_rebase(commits)`: Per-file commit splitting workflow
 
 ### Algorithm Details
 
@@ -150,10 +179,10 @@ tests/
 
 ### Dependencies
 
-- Python 3.8+ (uses type hints, f-strings)
-- Standard library only: subprocess, sys, json, typing, collections, tempfile, os
+- Python 3.9+
+- Standard library only: os, subprocess, sys, tempfile, typing
 - Git (executed via subprocess calls)
-- Development dependencies: pytest, black, ruff, mypy
+- Development dependencies: pytest, black, ruff, mypy, pytest-cov (optional)
 
 ## Development Notes
 

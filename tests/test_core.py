@@ -376,3 +376,216 @@ class TestGitTidy:
         assert len(groups) == 1
         assert len(groups[0]) == 1
         assert groups[0][0]["sha"] == "abc123"
+
+    def test_get_commit_message(self):
+        """Test getting commit message."""
+        mock_output = "Fix bug in authentication\n\nThis commit fixes a critical bug\nin the JWT authentication system.\n\nCloses #123"
+
+        with patch.object(self.git_tidy, "run_git") as mock_run_git:
+            mock_run_git.return_value = Mock(stdout=mock_output)
+            message = self.git_tidy.get_commit_message("abc123")
+
+        assert message == mock_output
+        mock_run_git.assert_called_once_with(
+            ["show", "--pretty=format:%B", "--no-patch", "abc123"]
+        )
+
+    def test_get_commit_message_empty(self):
+        """Test getting commit message from empty commit."""
+        with patch.object(self.git_tidy, "run_git") as mock_run_git:
+            mock_run_git.return_value = Mock(stdout="")
+            message = self.git_tidy.get_commit_message("abc123")
+
+        assert message == ""
+
+    @patch("builtins.input")
+    @patch.object(GitTidy, "run_git")
+    def test_perform_split_rebase_no_splitting_needed(self, mock_run_git, mock_input):
+        """Test perform_split_rebase when no commits need splitting."""
+        commits = [
+            {"sha": "abc123", "subject": "Fix bug 1", "files": {"file1.py"}},
+            {"sha": "def456", "subject": "Fix bug 2", "files": {"file2.py"}},
+        ]
+
+        result = self.git_tidy.perform_split_rebase(commits)
+
+        assert result is True
+        mock_input.assert_not_called()  # Should not ask for confirmation
+        mock_run_git.assert_not_called()  # Should not perform any git operations
+
+    @patch("builtins.input")
+    @patch.object(GitTidy, "run_git")
+    def test_perform_split_rebase_user_cancels(self, mock_run_git, mock_input):
+        """Test perform_split_rebase when user cancels."""
+        commits = [
+            {
+                "sha": "abc123",
+                "subject": "Fix bug 1",
+                "files": {"file1.py", "file2.py"},
+            },
+        ]
+
+        mock_input.return_value = "n"  # User cancels
+        mock_run_git.side_effect = [
+            Mock(stdout="base123"),  # rev-parse for base commit
+        ]
+
+        result = self.git_tidy.perform_split_rebase(commits)
+
+        assert result is False
+        mock_input.assert_called_once_with("\nProceed with split rebase? (y/N): ")
+        # Should not proceed with reset or commit operations
+
+    @patch("builtins.input")
+    @patch.object(GitTidy, "run_git")
+    @patch.object(GitTidy, "get_commit_message")
+    def test_perform_split_rebase_success(
+        self, mock_get_message, mock_run_git, mock_input
+    ):
+        """Test successful perform_split_rebase."""
+        commits = [
+            {
+                "sha": "abc123",
+                "subject": "Fix bug 1",
+                "files": {"file1.py", "file2.py"},
+            },
+            {"sha": "def456", "subject": "Fix bug 2", "files": {"file3.py"}},
+        ]
+
+        mock_input.return_value = "y"  # User confirms
+        mock_get_message.side_effect = [
+            "Fix bug 1\n\nOriginal message",
+            "Fix bug 2\n\nAnother message",
+        ]
+        mock_run_git.side_effect = [
+            Mock(stdout="base123"),  # rev-parse for base commit
+            Mock(),  # reset --soft
+            Mock(),  # cherry-pick --no-commit
+            Mock(),  # reset HEAD
+            Mock(),  # add file1.py
+            Mock(),  # commit file1.py
+            Mock(),  # cherry-pick --no-commit
+            Mock(),  # reset HEAD
+            Mock(),  # add file2.py
+            Mock(),  # commit file2.py
+            Mock(),  # cherry-pick --no-commit
+            Mock(),  # reset HEAD
+            Mock(),  # add file3.py
+            Mock(),  # commit file3.py
+        ]
+
+        with patch("builtins.print") as mock_print:
+            result = self.git_tidy.perform_split_rebase(commits)
+
+        assert result is True
+        mock_input.assert_called_once_with("\nProceed with split rebase? (y/N): ")
+
+        # Verify git operations were called
+        assert mock_run_git.call_count == 14  # All expected calls
+        mock_run_git.assert_any_call(["rev-parse", "abc123^"])
+        mock_run_git.assert_any_call(["reset", "--soft", "base123"])
+
+        # Verify print statements
+        mock_print.assert_any_call("Splitting 2 commits into 3 file-based commits...")
+        mock_print.assert_any_call("Successfully created 3 commits:")
+
+    @patch("builtins.input")
+    @patch.object(GitTidy, "run_git")
+    @patch.object(GitTidy, "get_commit_message")
+    def test_perform_split_rebase_empty_commit(
+        self, mock_get_message, mock_run_git, mock_input
+    ):
+        """Test perform_split_rebase with empty commit."""
+        commits = [
+            {"sha": "abc123", "subject": "Empty commit", "files": set()},
+        ]
+
+        with patch("builtins.print") as mock_print:
+            result = self.git_tidy.perform_split_rebase(commits)
+
+        assert result is True
+        # Empty commits are considered as "no splitting needed" since len(files) <= 1
+        mock_input.assert_not_called()  # Should not ask for confirmation
+        mock_run_git.assert_not_called()  # Should not perform any git operations
+        mock_print.assert_called_with(
+            "No commits need splitting - all commits already have single files"
+        )
+
+    @patch.object(GitTidy, "perform_split_rebase")
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    @patch.object(GitTidy, "create_backup")
+    @patch.object(GitTidy, "cleanup_backup")
+    def test_split_commits_success(
+        self, mock_cleanup, mock_backup, mock_get_commits, mock_perform
+    ):
+        """Test successful split_commits execution."""
+        mock_commits = [
+            {
+                "sha": "abc123",
+                "subject": "Fix bug 1",
+                "files": {"file1.py", "file2.py"},
+            },
+        ]
+        mock_get_commits.return_value = mock_commits
+        mock_perform.return_value = True
+
+        self.git_tidy.split_commits("HEAD~5")
+
+        mock_backup.assert_called_once()
+        mock_get_commits.assert_called_once_with("HEAD~5")
+        mock_perform.assert_called_once_with(mock_commits)
+        mock_cleanup.assert_called_once()
+
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    @patch.object(GitTidy, "create_backup")
+    @patch.object(GitTidy, "cleanup_backup")
+    def test_split_commits_no_commits(
+        self, mock_cleanup, mock_backup, mock_get_commits
+    ):
+        """Test split_commits when no commits found."""
+        mock_get_commits.return_value = []
+
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.split_commits()
+
+        mock_backup.assert_called_once()
+        mock_get_commits.assert_called_once_with(None)
+        mock_print.assert_called_with("No commits found to split")
+        mock_cleanup.assert_called_once()
+
+    @patch.object(GitTidy, "perform_split_rebase")
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    @patch.object(GitTidy, "create_backup")
+    @patch.object(GitTidy, "restore_from_backup")
+    def test_split_commits_failure(
+        self, mock_restore, mock_backup, mock_get_commits, mock_perform
+    ):
+        """Test split_commits when perform_split_rebase fails."""
+        mock_commits = [
+            {"sha": "abc123", "subject": "Fix bug 1", "files": {"file1.py"}},
+        ]
+        mock_get_commits.return_value = mock_commits
+        mock_perform.return_value = False
+
+        self.git_tidy.split_commits()
+
+        mock_backup.assert_called_once()
+        mock_get_commits.assert_called_once_with(None)
+        mock_perform.assert_called_once_with(mock_commits)
+        mock_restore.assert_called_once()
+
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    @patch.object(GitTidy, "create_backup")
+    @patch.object(GitTidy, "restore_from_backup")
+    def test_split_commits_exception(self, mock_restore, mock_backup, mock_get_commits):
+        """Test split_commits when exception occurs."""
+        mock_get_commits.side_effect = Exception("Git error")
+
+        with patch("builtins.print") as mock_print:
+            with pytest.raises(SystemExit):
+                self.git_tidy.split_commits()
+
+        mock_backup.assert_called_once()
+        mock_get_commits.assert_called_once_with(None)
+        mock_restore.assert_called_once()
+        mock_print.assert_called_with("Error: Git error")

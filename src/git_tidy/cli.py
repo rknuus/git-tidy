@@ -45,6 +45,34 @@ def cmd_split_commits(args: argparse.Namespace) -> None:
         git_tidy.split_commits(args.base)
 
 
+def cmd_squash_all(args: argparse.Namespace) -> None:
+    """Handle the squash-all subcommand."""
+    git_tidy = GitTidy()
+
+    # Get commits to squash
+    commits = git_tidy.get_commits_to_rebase(args.base)
+
+    if not commits:
+        print("No commits found to squash")
+        return
+
+    # Get base commit
+    first_commit_sha = commits[0]["sha"]
+    base_commit = git_tidy.run_git(["rev-parse", f"{first_commit_sha}^"]).stdout.strip()
+
+    print(f"Found {len(commits)} commits to squash:")
+    for commit in commits:
+        print(f"  {commit['sha'][:8]} {commit['subject']}")
+
+    print("\nTo squash all commits into one, run these commands:")
+    print(f"  git reset --soft {base_commit[:8]}")
+    print('  git commit -m "Your new commit message"')
+    print("\nThis will:")
+    print(f"  - Reset to commit {base_commit[:8]} (keeping all changes staged)")
+    print("  - Allow you to create a single commit with all changes")
+    print(f"  - Combine {len(commits)} commits into 1 commit")
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -58,6 +86,7 @@ Examples:
   git-tidy group-commits --base origin/main
   git-tidy split-commits --dry-run
   git-tidy split-commits --base origin/main
+  git-tidy squash-all --base origin/main
         """.strip(),
     )
 
@@ -108,6 +137,18 @@ Examples:
         help="Show proposed splitting without performing rebase",
     )
     split_parser.set_defaults(func=cmd_split_commits)
+
+    # squash-all subcommand
+    squash_parser = subparsers.add_parser(
+        "squash-all",
+        help="Show instructions to squash all commits into one",
+        description="Show git commands to squash all commits from base to HEAD into a single commit. This is useful for reducing merge conflicts by combining multiple commits.",
+    )
+    squash_parser.add_argument(
+        "--base",
+        help="Base commit/branch for squash range (defaults to merge-base with main/master)",
+    )
+    squash_parser.set_defaults(func=cmd_squash_all)
 
     return parser
 

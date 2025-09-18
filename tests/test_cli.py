@@ -4,7 +4,13 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from git_tidy.cli import cmd_group_commits, create_parser, main
+from git_tidy.cli import (
+    cmd_group_commits,
+    cmd_split_commits,
+    cmd_squash_all,
+    create_parser,
+    main,
+)
 from git_tidy.core import GitTidy
 
 
@@ -22,9 +28,11 @@ class TestCLI:
         """Test that subcommands are properly created."""
         parser = create_parser()
 
-        # Test help output contains group-commits
+        # Test help output contains all commands
         help_output = parser.format_help()
         assert "group-commits" in help_output
+        assert "split-commits" in help_output
+        assert "squash-all" in help_output
 
     def test_parse_group_commits_default(self):
         """Test parsing group-commits with default arguments."""
@@ -54,6 +62,47 @@ class TestCLI:
         assert args.base == "origin/main"
         assert args.threshold == 0.5
         assert args.dry_run is True
+
+    def test_parse_split_commits_default(self):
+        """Test parsing split-commits with default arguments."""
+        parser = create_parser()
+        args = parser.parse_args(["split-commits"])
+
+        assert args.command == "split-commits"
+        assert args.base is None
+        assert args.dry_run is False
+
+    def test_parse_split_commits_all_args(self):
+        """Test parsing split-commits with all arguments."""
+        parser = create_parser()
+        args = parser.parse_args(
+            [
+                "split-commits",
+                "--base",
+                "origin/main",
+                "--dry-run",
+            ]
+        )
+
+        assert args.command == "split-commits"
+        assert args.base == "origin/main"
+        assert args.dry_run is True
+
+    def test_parse_squash_all_default(self):
+        """Test parsing squash-all with default arguments."""
+        parser = create_parser()
+        args = parser.parse_args(["squash-all"])
+
+        assert args.command == "squash-all"
+        assert args.base is None
+
+    def test_parse_squash_all_with_base(self):
+        """Test parsing squash-all with base argument."""
+        parser = create_parser()
+        args = parser.parse_args(["squash-all", "--base", "origin/main"])
+
+        assert args.command == "squash-all"
+        assert args.base == "origin/main"
 
     def test_parse_version(self):
         """Test version argument."""
@@ -109,6 +158,116 @@ class TestCLI:
 
         mock_run.assert_called_once_with("origin/main", 0.5)
 
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    def test_cmd_split_commits_dry_run(self, mock_get_commits):
+        """Test split-commits command in dry-run mode."""
+        # Setup mocks
+        mock_commits = [
+            {
+                "sha": "abc123",
+                "subject": "Fix bug 1",
+                "files": {"file1.py", "file2.py"},
+            },
+            {"sha": "def456", "subject": "Fix bug 2", "files": {"file3.py"}},
+        ]
+        mock_get_commits.return_value = mock_commits
+
+        args = Mock()
+        args.dry_run = True
+        args.base = None
+
+        with patch("builtins.print") as mock_print:
+            cmd_split_commits(args)
+
+        # Verify the right methods were called
+        mock_get_commits.assert_called_once_with(None)
+
+        # Verify output
+        mock_print.assert_any_call("Found 2 commits to split:")
+        mock_print.assert_any_call("\nCommit abc123: Fix bug 1")
+        mock_print.assert_any_call("  Files (2): file1.py, file2.py")
+        mock_print.assert_any_call("  Would create 2 separate commits:")
+        mock_print.assert_any_call("    - split off file1.py")
+        mock_print.assert_any_call("    - split off file2.py")
+
+    @patch.object(GitTidy, "split_commits")
+    def test_cmd_split_commits_execute(self, mock_split):
+        """Test split-commits command execution (not dry-run)."""
+        args = Mock()
+        args.dry_run = False
+        args.base = "origin/main"
+
+        cmd_split_commits(args)
+
+        mock_split.assert_called_once_with("origin/main")
+
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    def test_cmd_split_commits_empty_commits(self, mock_get_commits):
+        """Test split-commits with no commits found."""
+        mock_get_commits.return_value = []
+
+        args = Mock()
+        args.dry_run = True
+        args.base = "HEAD~5"
+
+        with patch("builtins.print") as mock_print:
+            cmd_split_commits(args)
+
+        mock_print.assert_any_call("Found 0 commits to split:")
+
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    @patch.object(GitTidy, "run_git")
+    def test_cmd_squash_all_success(self, mock_run_git, mock_get_commits):
+        """Test squash-all command with commits found."""
+        mock_commits = [
+            {"sha": "abc123", "subject": "Fix bug 1", "files": {"file1.py"}},
+            {"sha": "def456", "subject": "Fix bug 2", "files": {"file2.py"}},
+        ]
+        mock_get_commits.return_value = mock_commits
+        mock_run_git.return_value = Mock(stdout="base789")
+
+        args = Mock()
+        args.base = "HEAD~5"
+
+        with patch("builtins.print") as mock_print:
+            cmd_squash_all(args)
+
+        # Verify the right methods were called
+        mock_get_commits.assert_called_once_with("HEAD~5")
+        mock_run_git.assert_called_once_with(["rev-parse", "abc123^"])
+
+        # Verify output
+        mock_print.assert_any_call("Found 2 commits to squash:")
+        mock_print.assert_any_call("  abc123 Fix bug 1")
+        mock_print.assert_any_call("  def456 Fix bug 2")
+        mock_print.assert_any_call(
+            "\nTo squash all commits into one, run these commands:"
+        )
+        mock_print.assert_any_call("  git reset --soft base789")
+        mock_print.assert_any_call('  git commit -m "Your new commit message"')
+        mock_print.assert_any_call("\nThis will:")
+        mock_print.assert_any_call(
+            "  - Reset to commit base789 (keeping all changes staged)"
+        )
+        mock_print.assert_any_call(
+            "  - Allow you to create a single commit with all changes"
+        )
+        mock_print.assert_any_call("  - Combine 2 commits into 1 commit")
+
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    def test_cmd_squash_all_no_commits(self, mock_get_commits):
+        """Test squash-all command with no commits found."""
+        mock_get_commits.return_value = []
+
+        args = Mock()
+        args.base = None
+
+        with patch("builtins.print") as mock_print:
+            cmd_squash_all(args)
+
+        mock_get_commits.assert_called_once_with(None)
+        mock_print.assert_called_once_with("No commits found to squash")
+
     @patch("git_tidy.cli.create_parser")
     def test_main_no_subcommand(self, mock_create_parser):
         """Test main function when no subcommand is provided."""
@@ -145,6 +304,8 @@ class TestCLI:
         help_output = parser.format_help()
         assert "git-tidy" in help_output
         assert "group-commits" in help_output
+        assert "split-commits" in help_output
+        assert "squash-all" in help_output
         assert "Examples:" in help_output
 
     def test_integration_subcommand_help(self):
@@ -154,6 +315,16 @@ class TestCLI:
         # Test that --help works (it will exit, so we catch that)
         with pytest.raises(SystemExit) as exc_info:
             parser.parse_args(["group-commits", "--help"])
+        assert exc_info.value.code == 0
+
+        # Test split-commits help
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["split-commits", "--help"])
+        assert exc_info.value.code == 0
+
+        # Test squash-all help
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["squash-all", "--help"])
         assert exc_info.value.code == 0
 
     @patch("sys.argv", ["git-tidy"])
@@ -220,3 +391,64 @@ class TestCLIEdgeCases:
         mock_get_commits.assert_called_once_with("HEAD~5")
         mock_group.assert_called_once_with(mock_commits, 0.1)
         mock_print.assert_any_call("Found 1 commits, would group into 1 groups:")
+
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    def test_cmd_split_commits_single_file_commits(self, mock_get_commits):
+        """Test split-commits with commits that already have single files."""
+        mock_commits = [
+            {"sha": "abc123", "subject": "Fix bug 1", "files": {"file1.py"}},
+            {"sha": "def456", "subject": "Fix bug 2", "files": {"file2.py"}},
+        ]
+        mock_get_commits.return_value = mock_commits
+
+        args = Mock()
+        args.dry_run = True
+        args.base = None
+
+        with patch("builtins.print") as mock_print:
+            cmd_split_commits(args)
+
+        # Should show that each commit would create 1 separate commit
+        mock_print.assert_any_call("Found 2 commits to split:")
+        mock_print.assert_any_call("  Would create 1 separate commits:")
+        mock_print.assert_any_call("    - split off file1.py")
+        mock_print.assert_any_call("    - split off file2.py")
+
+    @patch.object(GitTidy, "get_commits_to_rebase")
+    def test_cmd_split_commits_mixed_file_counts(self, mock_get_commits):
+        """Test split-commits with mixed file counts."""
+        mock_commits = [
+            {"sha": "abc123", "subject": "Single file", "files": {"file1.py"}},
+            {
+                "sha": "def456",
+                "subject": "Multiple files",
+                "files": {"file2.py", "file3.py", "file4.py"},
+            },
+            {"sha": "ghi789", "subject": "Empty commit", "files": set()},
+        ]
+        mock_get_commits.return_value = mock_commits
+
+        args = Mock()
+        args.dry_run = True
+        args.base = None
+
+        with patch("builtins.print") as mock_print:
+            cmd_split_commits(args)
+
+        # Should show different handling for each type
+        mock_print.assert_any_call("Found 3 commits to split:")
+        mock_print.assert_any_call("\nCommit abc123: Single file")
+        mock_print.assert_any_call("  Files (1): file1.py")
+        mock_print.assert_any_call("  Would create 1 separate commits:")
+        mock_print.assert_any_call("    - split off file1.py")
+
+        mock_print.assert_any_call("\nCommit def456: Multiple files")
+        mock_print.assert_any_call("  Files (3): file2.py, file3.py, file4.py")
+        mock_print.assert_any_call("  Would create 3 separate commits:")
+        mock_print.assert_any_call("    - split off file2.py")
+        mock_print.assert_any_call("    - split off file3.py")
+        mock_print.assert_any_call("    - split off file4.py")
+
+        mock_print.assert_any_call("\nCommit ghi789: Empty commit")
+        mock_print.assert_any_call("  Files (0): ")
+        mock_print.assert_any_call("  Would create 0 separate commits:")
