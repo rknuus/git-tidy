@@ -123,6 +123,11 @@ class GitTidy:
         }
         return files
 
+    def get_commit_message(self, sha: str) -> str:
+        """Get the full commit message for a commit."""
+        result = self.run_git(["show", "--pretty=format:%B", "--no-patch", sha])
+        return result.stdout.strip()
+
     def calculate_similarity(self, files1: set[str], files2: set[str]) -> float:
         """Calculate Jaccard similarity between two sets of files."""
         if not files1 and not files2:
@@ -250,6 +255,113 @@ class GitTidy:
 
         finally:
             os.unlink(todo_file)
+
+    def perform_split_rebase(self, commits: list[CommitInfo]) -> bool:
+        """Perform the actual split rebase operation."""
+        # Check if any commits need splitting
+        needs_splitting = any(len(commit["files"]) > 1 for commit in commits)
+        if not needs_splitting:
+            print("No commits need splitting - all commits already have single files")
+            return True
+
+        # Get base commit
+        first_commit_sha = commits[0]["sha"]
+        base_commit = self.run_git(["rev-parse", f"{first_commit_sha}^"]).stdout.strip()
+
+        total_files = sum(len(commit["files"]) for commit in commits)
+        print(
+            f"Splitting {len(commits)} commits into {total_files} file-based commits..."
+        )
+        print("\nProposed splitting:")
+        for commit in commits:
+            if len(commit["files"]) > 1:
+                print(
+                    f"  Commit {commit['sha'][:8]}: {len(commit['files'])} files -> {len(commit['files'])} commits"
+                )
+                for file in sorted(commit["files"]):
+                    print(f"    - split off {file}")
+            else:
+                print(
+                    f"  Commit {commit['sha'][:8]}: {len(commit['files'])} file -> keep as-is"
+                )
+
+        # Confirm with user
+        response = input("\nProceed with split rebase? (y/N): ")
+        if response.lower() != "y":
+            print("Split rebase cancelled")
+            return False
+
+        # Reset to base commit
+        print(f"Resetting to base commit {base_commit[:8]}...")
+        self.run_git(["reset", "--soft", base_commit])
+
+        # Create new commits for each file
+        new_commits = []
+        for commit in commits:
+            files = sorted(commit["files"])
+            original_message = self.get_commit_message(commit["sha"])
+
+            if len(files) <= 1:
+                # Single file or no files - create commit as-is
+                if files:
+                    # Cherry-pick the commit to get the changes
+                    self.run_git(["cherry-pick", "--no-commit", commit["sha"]])
+                    # Reset and add only the specific file
+                    self.run_git(["reset", "HEAD"])
+                    self.run_git(["add", files[0]])
+                    self.run_git(["commit", "-m", original_message])
+                    new_commits.append(original_message)
+                else:
+                    # Empty commit - just commit with message
+                    self.run_git(["commit", "--allow-empty", "-m", original_message])
+                    new_commits.append(original_message)
+            else:
+                # Multiple files - create separate commits for each file
+                for file in files:
+                    # Cherry-pick the commit to get the changes
+                    self.run_git(["cherry-pick", "--no-commit", commit["sha"]])
+                    # Reset and add only the specific file
+                    self.run_git(["reset", "HEAD"])
+                    self.run_git(["add", file])
+                    # Create commit with split message
+                    split_message = f"split off {file}\n\n{original_message}"
+                    self.run_git(["commit", "-m", split_message])
+                    new_commits.append(split_message)
+
+        print(f"Successfully created {len(new_commits)} commits:")
+        for i, message in enumerate(new_commits, 1):
+            first_line = message.split("\n")[0]
+            print(f"  {i}. {first_line}")
+
+        return True
+
+    def split_commits(self, base_ref: Optional[str] = None) -> None:
+        """Split commits into separate commits, one per file."""
+        try:
+            # Create backup
+            self.create_backup()
+
+            # Get commits to split
+            commits = self.get_commits_to_rebase(base_ref)
+            if not commits:
+                print("No commits found to split")
+                self.cleanup_backup()
+                return
+
+            print(f"Found {len(commits)} commits to split")
+
+            # Perform split rebase
+            success = self.perform_split_rebase(commits)
+
+            if success:
+                self.cleanup_backup()
+            else:
+                self.restore_from_backup()
+
+        except Exception as e:
+            print(f"Error: {e}")
+            self.restore_from_backup()
+            sys.exit(1)
 
     def run(
         self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3

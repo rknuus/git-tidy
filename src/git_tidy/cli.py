@@ -25,6 +25,26 @@ def cmd_group_commits(args: argparse.Namespace) -> None:
         git_tidy.run(args.base, args.threshold)
 
 
+def cmd_split_commits(args: argparse.Namespace) -> None:
+    """Handle the split-commits subcommand."""
+    git_tidy = GitTidy()
+
+    if args.dry_run:
+        # Just show the analysis
+        commits = git_tidy.get_commits_to_rebase(args.base)
+        print(f"Found {len(commits)} commits to split:")
+        for commit in commits:
+            print(f"\nCommit {commit['sha'][:8]}: {commit['subject']}")
+            print(
+                f"  Files ({len(commit['files'])}): {', '.join(sorted(commit['files']))}"
+            )
+            print(f"  Would create {len(commit['files'])} separate commits:")
+            for file in sorted(commit["files"]):
+                print(f"    - split off {file}")
+    else:
+        git_tidy.split_commits(args.base)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -36,6 +56,8 @@ Examples:
   git-tidy group-commits --dry-run
   git-tidy group-commits --threshold 0.5
   git-tidy group-commits --base origin/main
+  git-tidy split-commits --dry-run
+  git-tidy split-commits --base origin/main
         """.strip(),
     )
 
@@ -69,6 +91,23 @@ Examples:
         help="Show proposed grouping without performing rebase",
     )
     group_parser.set_defaults(func=cmd_group_commits)
+
+    # split-commits subcommand
+    split_parser = subparsers.add_parser(
+        "split-commits",
+        help="Split each commit into separate commits, one per file",
+        description="Split commits from base to HEAD into separate commits, one per file. Each new commit will have the message 'split off <file>' followed by the original commit message.",
+    )
+    split_parser.add_argument(
+        "--base",
+        help="Base commit/branch for rebase range (defaults to merge-base with main/master)",
+    )
+    split_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show proposed splitting without performing rebase",
+    )
+    split_parser.set_defaults(func=cmd_split_commits)
 
     return parser
 
