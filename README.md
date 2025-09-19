@@ -26,13 +26,22 @@ uv sync --dev
 
 ## Usage
 
-After installation, you can use the `git-tidy` command with various subcommands:
+After installation, you can use the `git-tidy` command with the most useful subcommands:
 
 ```bash
 # Show available commands
 git-tidy --help
 
-# Group commits by file similarity (main feature)
+# Orchestrated, safe rebase with dedup and validation (recommended)
+git-tidy smart-rebase --base origin/main --prompt --optimize-merge
+
+# Rebase onto base while skipping content already merged (patch-id aware)
+git-tidy rebase-skip-merged --base origin/main --no-prompt --optimize-merge
+
+# Configure repository with safer merge/rebase defaults (idempotent)
+git-tidy configure-repo --scope local --preset safe
+
+# Group commits by file similarity (optional preparation step)
 git-tidy group-commits
 
 # Preview grouping without making changes
@@ -43,35 +52,56 @@ git-tidy group-commits --threshold 0.5
 
 # Specify custom base for rebase range
 git-tidy group-commits --base origin/main
+
+# Split commits into per-file commits (optional surgery)
+git-tidy split-commits --dry-run
 ```
 
-### Commands
+### Core Commands
+
+#### `smart-rebase`
+Performs an orchestrated rebase with preflight checks, base selection, dedup-aware replay, optional chunking/trivial auto-resolve, and post-run validation/reporting.
+
+Key options:
+- `--branch BRANCH`, `--base BASE`
+- `--[no-]prompt` (default: on), `--[no-]backup` (default: on)
+- `--[no-]optimize-merge` (temporary safe merge settings)
+- `--conflict-bias=ours|theirs|none` (default: none)
+- `--chunk-size N`, `--[no-]auto-resolve-trivial`, `--max-conflicts N`
+- `--[no-]rename-detect`, `--[no-]lint`, `--[no-]test`, `--[no-]build`
+
+#### `rebase-skip-merged`
+Rebases the current (or given) branch onto a base while skipping commits whose content is already on the base (via patch-id equivalence). Great when an ancestor branch was rebased but landed unchanged on main.
+
+Key options:
+- `--base BASE`, `--branch BRANCH`, `--[no-]dry-run`
+- `--[no-]prompt`, `--[no-]backup`
+- `--[no-]optimize-merge`, `--conflict-bias=ours|theirs|none`
+- `--chunk-size N`, `--max-conflicts N`, `--[no-]auto-resolve-trivial`
+
+#### `configure-repo`
+Applies safe, idempotent git configuration to reduce merge/rebase pain.
+
+Key options:
+- `--scope local|global` (default: local)
+- `--preset safe|opinionated|custom` (currently safe preset implemented)
 
 #### `group-commits`
-
 Groups commits by file similarity and reorders them while preserving relative order within each group.
 
-**Options:**
-- `--base BASE`: Specify base commit/branch for rebase range (defaults to merge-base with main/master)
-- `--threshold THRESHOLD`: Set similarity threshold (0.0-1.0, default: 0.3)
-- `--dry-run`: Show proposed grouping without performing the actual rebase
+Key options:
+- `--base BASE` (defaults to merge-base with main/master)
+- `--threshold FLOAT` (default: 0.3)
+- `--[no-]dry-run`
 
-**Examples:**
-```bash
-# Basic usage with default settings
-git-tidy group-commits
+#### `split-commits`
+Splits each commit in the range into separate commits, one per file.
 
-# Preview changes only
-git-tidy group-commits --dry-run
+Key options:
+- `--base BASE`, `--[no-]dry-run`
 
-# Custom threshold for more/less grouping
-git-tidy group-commits --threshold 0.8  # stricter grouping
-git-tidy group-commits --threshold 0.1  # looser grouping
-
-# Specify base commit range
-git-tidy group-commits --base HEAD~10
-git-tidy group-commits --base origin/main
-```
+### Advanced/Utility
+- `select-base`, `preflight-check`, `auto-continue`, `auto-resolve-trivial`, `range-diff-report`, `rerere-share`, `checkpoint-create`, `checkpoint-restore` — helper commands used by `smart-rebase` and available for advanced workflows.
 
 ## How it works
 
@@ -83,6 +113,18 @@ Git-tidy analyzes your commit history and groups commits that touch similar file
 - **Error recovery**: Restores original state on failure
 - **User confirmation**: Prompts before executing rebase
 - **Dry-run mode**: Preview changes without modification
+
+### Examples
+```bash
+# Smart rebase with safe settings and prompts
+git-tidy smart-rebase --base origin/main --prompt --optimize-merge
+
+# Skip-merged rebase without prompts; bias to 'theirs' on conflicts
+git-tidy rebase-skip-merged --base origin/main --no-prompt --conflict-bias=theirs
+
+# Configure current repo with safe settings
+git-tidy configure-repo --scope local
+```
 
 ## Development
 
