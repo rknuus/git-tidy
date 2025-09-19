@@ -1,6 +1,6 @@
 # git-tidy
 
-A tool to automate complicated and tedious git operations, e.g. intelligently reordering git commits by grouping them based on file similarity.
+A tool to automate [parts of] complicated and tedious git operations, e.g. intelligently reordering git commits by grouping them based on file similarity.
 
 ## Installation
 
@@ -68,66 +68,130 @@ git-tidy split-commits --dry-run
 ### Core Commands
 
 #### `smart-merge`
-Preview or perform a merge of a source branch into a target using the ort strategy with rename detection and safer temporary settings. Defaults to preview (no changes) unless `--apply` is provided.
+**Scenario**: You need to merge a feature branch into main but want to avoid common merge pitfalls like broken rename detection or poor conflict resolution.
 
-Key options:
-- `--branch BRANCH` (source), `--into TARGET` (default: current branch)
-- `--[no-]apply` (default: no-apply/preview), `--[no-]prompt`, `--[no-]backup`
-- `--[no-]optimize-merge` (temporary safe settings), `--conflict-bias=ours|theirs|none`
-- `--[no-]rename-detect`, `--rename-threshold N`
-- `--[no-]auto-resolve-trivial`, `--max-conflicts N`
-- `--[no-]lint`, `--[no-]test`, `--[no-]build`, `--report=text|json`
+**Effect**: Performs a safer merge using the ort strategy with rename detection, creating a clean merge commit with better conflict resolution than default git merge.
+
+**Example scenarios**:
+- Merging a feature branch that renamed/moved files
+- Integrating changes from a long-running branch with potential conflicts
+- Ensuring merge quality with automated testing before finalizing
+
+**Key options**:
+- `--branch BRANCH`, `--into TARGET`: Specify source and target branches
+- `--apply`: Actually perform the merge (default is preview-only for safety)
+- `--optimize-merge`: Temporarily enables safer git settings during merge
+- `--conflict-bias=ours|theirs`: Auto-resolve conflicts favoring one side
+- `--rename-detect`: Handle file renames intelligently (recommended)
+- `--auto-resolve-trivial`: Skip manual intervention for obvious conflicts
+- `--lint/--test/--build`: Run validation after merge to ensure quality
 
 #### `smart-rebase`
-Performs an orchestrated rebase with preflight checks, base selection, dedup-aware replay, optional chunking/trivial auto-resolve, and post-run validation/reporting.
+**Scenario**: You need to rebase your feature branch onto an updated main branch but want to avoid the pain of resolving the same conflicts repeatedly or dealing with duplicate commits.
 
-Key options:
-- `--branch BRANCH`, `--base BASE`
-- `--[no-]prompt` (default: on), `--[no-]backup` (default: on)
-- `--[no-]optimize-merge` (temporary safe merge settings)
-- `--conflict-bias=ours|theirs|none` (default: none)
-- `--chunk-size N`, `--[no-]auto-resolve-trivial`, `--max-conflicts N`
-- `--[no-]rename-detect`, `--[no-]lint`, `--[no-]test`, `--[no-]build`
+**Effect**: Performs an intelligent rebase that skips commits already present (via patch-id), handles conflicts better, and provides comprehensive safety nets and validation.
+
+**Example scenarios**:
+- Rebasing after main has been updated with related changes
+- Cleaning up a messy feature branch before merging
+- Handling complex rebases with many potential conflicts
+- Ensuring your rebased branch still builds and passes tests
+
+**Key options**:
+- `--base BASE`: Target branch to rebase onto (e.g., origin/main)
+- `--prompt`: Ask for confirmation before destructive operations (default: on)
+- `--backup`: Create backup branch before starting (default: on, recommended)
+- `--optimize-merge`: Use safer git settings during conflict resolution
+- `--conflict-bias=ours|theirs`: Auto-resolve conflicts by favoring one side
+- `--chunk-size N`: Process commits in smaller batches to isolate conflicts
+- `--auto-resolve-trivial`: Skip manual intervention for obvious conflicts
+- `--lint/--test/--build`: Validate each step to catch breakage early
 
 #### `smart-revert`
-Preview or perform revert(s) for one or more commits/ranges with strategy hints and rename detection. Defaults to preview (no changes) unless `--apply` is provided.
+**Scenario**: You need to undo problematic commits from your branch or main, but the commits involved file renames or complex changes that make standard `git revert` difficult.
 
-Key options:
-- Selection: `--commits SHA[,SHA…]`, `--range A..B`, or `--count N`
-- Execution: `--[no-]apply` (default: no-apply/preview), `--[no-]prompt`, `--[no-]backup`
-- Merge behavior: `--conflict-bias=ours|theirs|none`, `--[no-]rename-detect`, `--rename-threshold N`
-- Extras: `--[no-]optimize-merge`, `--max-conflicts N`, `--[no-]lint`, `--[no-]test`, `--[no-]build`, `--report=text|json`
+**Effect**: Intelligently reverts commits using better merge strategies and rename detection, creating clean revert commits that properly undo the intended changes.
 
+**Example scenarios**:
+- Reverting a feature that broke production
+- Undoing commits that renamed files before making other changes
+- Rolling back a range of related commits cleanly
+- Ensuring reverts don't break the build
 
-Key options:
-- `--base BASE`, `--branch BRANCH`, `--[no-]dry-run`
-- `--[no-]prompt`, `--[no-]backup`
-- `--[no-]optimize-merge`, `--conflict-bias=ours|theirs|none`
-- `--chunk-size N`, `--max-conflicts N`, `--[no-]auto-resolve-trivial`
+**Key options**:
+- `--commits SHA1,SHA2`: Revert specific commits by hash
+- `--range A..B`: Revert all commits in a range
+- `--count N`: Revert the last N commits
+- `--apply`: Actually perform the revert (default is preview-only)
+- `--conflict-bias=ours|theirs`: Auto-resolve conflicts during revert
+- `--rename-detect`: Handle file renames properly during revert
+- `--lint/--test/--build`: Validate that revert doesn't break anything
 
 #### `rebase-skip-merged`
-Rebases the current (or given) branch onto a base while skipping commits whose content is already on the base (via patch-id equivalence). Great when an ancestor branch was rebased but landed unchanged on main.
+**Scenario**: You're rebasing a feature branch onto main, but some of your commits were already cherry-picked or merged into main through another branch, causing unnecessary conflicts or duplicate commits.
+
+**Effect**: Rebases your branch while intelligently skipping commits that already exist on the target branch (detected via patch-id), avoiding duplicate commits and related conflicts.
+
+**Example scenarios**:
+- Your feature branch has commits that were hotfixed directly to main
+- Another branch merged some of your changes before you could rebase
+- You're syncing with a main branch that had commits cherry-picked from your work
+
+**Key options**:
+- `--base BASE`: Target branch to rebase onto
+- `--prompt`: Confirm before starting the rebase operation
+- `--backup`: Create backup branch (recommended for safety)
+- `--optimize-merge`: Use safer git settings during rebase
+- `--conflict-bias=ours|theirs`: Auto-resolve remaining conflicts
 
 #### `configure-repo`
-Applies safe, idempotent git configuration to reduce merge/rebase pain.
+**Scenario**: You want to set up a repository with safer git defaults to reduce common merge and rebase problems before they happen.
 
-Key options:
-- `--scope local|global` (default: local)
-- `--preset safe|opinionated|custom` (currently safe preset implemented)
+**Effect**: Applies a curated set of git configuration settings that improve merge behavior, enable better rename detection, and set up helpful defaults.
+
+**Example scenarios**:
+- Setting up a new repository for team development
+- Improving git behavior in an existing problematic repository
+- Standardizing git settings across multiple repositories
+- Enabling better merge strategies by default
+
+**Key options**:
+- `--scope local`: Apply settings only to current repository (recommended)
+- `--scope global`: Apply settings to your global git configuration
+- `--preset safe`: Use conservative, widely-compatible settings (default)
 
 #### `group-commits`
-Groups commits by file similarity and reorders them while preserving relative order within each group.
+**Scenario**: Your feature branch has commits that touch overlapping files in a scattered way, making the history hard to follow and potentially causing unnecessary merge conflicts.
 
-Key options:
-- `--base BASE` (defaults to merge-base with main/master)
-- `--threshold FLOAT` (default: 0.3)
-- `--[no-]dry-run`
+**Effect**: Analyzes file overlap between commits and reorders them to group related changes together, making the commit history more logical and easier to review.
+
+**Example scenarios**:
+- Preparing a feature branch for code review with cleaner history
+- Reducing potential conflicts by grouping related file changes
+- Making it easier to cherry-pick or revert related changes together
+- Cleaning up development commits before merging
+
+**Key options**:
+- `--base BASE`: Specify which commits to group (from base to HEAD)
+- `--threshold FLOAT`: How similar files must be to group commits (0.0-1.0, default 0.3)
+- `--dry-run`: Preview the grouping without making changes
+- Lower threshold = more aggressive grouping, higher = more conservative
 
 #### `split-commits`
-Splits each commit in the range into separate commits, one per file.
+**Scenario**: You have commits that change multiple unrelated files, making them hard to review, cherry-pick, or revert selectively.
 
-Key options:
-- `--base BASE`, `--[no-]dry-run`
+**Effect**: Breaks down each multi-file commit into separate commits, one per file, preserving the original commit message but making changes more granular.
+
+**Example scenarios**:
+- Preparing commits for easier code review
+- Enabling selective cherry-picking of specific file changes
+- Making it easier to revert changes to individual files
+- Converting large refactoring commits into reviewable pieces
+
+**Key options**:
+- `--base BASE`: Specify which commits to split (from base to HEAD)
+- `--dry-run`: Preview the splitting without making changes
+- Note: This creates many more commits, so use carefully
 
 ### Advanced/Utility
 - `select-base`, `preflight-check`, `auto-continue`, `auto-resolve-trivial`, `range-diff-report`, `rerere-share`, `checkpoint-create`, `checkpoint-restore` — helper commands used by `smart-rebase` and available for advanced workflows.
@@ -135,7 +199,7 @@ Key options:
 
 ## How it works
 
-Git-tidy analyzes your commit history and groups commits that touch similar files together while preserving the relative order within each group. It uses a greedy clustering approach with Jaccard similarity to determine file overlap.
+Git-tidy provides intelligent git operations through strategy-assisted merges, rebases, and reverts with safety features like automatic backups and conflict resolution. It uses advanced git strategies (ort with rename detection), patch-id awareness for deduplication, and file similarity analysis for commit grouping.
 
 ### Safety Features
 
