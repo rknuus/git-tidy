@@ -414,6 +414,83 @@ class GitTidy:
         for key, value in settings:
             self.run_git(["config", scope_flag, key, value])
 
+    def rebase_skip_merged(
+        self,
+        base_ref: Optional[str] = None,
+        branch: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> None:
+        """Rebase a branch onto base while skipping commits already on base by content.
+
+        Uses `git cherry -v <base> <branch>` to determine which commits are unique (+ lines)
+        and replays only those commits in order onto the base. Safe and explicit alternative
+        to a regular rebase when ancestor SHAs changed but content landed unchanged.
+        """
+        # Determine defaults
+        if base_ref is None:
+            base_ref = "origin/main"
+
+        if branch is None:
+            branch = self.run_git(["branch", "--show-current"]).stdout.strip()
+
+        # Ensure refs are up to date (best-effort)
+        self.run_git(["fetch", "--all", "--prune"], check_output=False)
+
+        # Compute branch unique commits vs base via git cherry
+        cherry = self.run_git(["cherry", "-v", base_ref, branch])
+        unique_lines = [
+            line for line in cherry.stdout.strip().split("\n") if line.startswith("+")
+        ]
+
+        unique_commits = []
+        for line in unique_lines:
+            # format: "+ <sha> <subject>"
+            parts = line.split(" ", 2)
+            if len(parts) >= 2:
+                unique_commits.append(parts[1])
+
+        print(
+            f"Found {len(unique_commits)} commits unique to {branch} relative to {base_ref}"
+        )
+
+        if dry_run:
+            if unique_commits:
+                print("Would replay (oldest to newest):")
+                for sha in unique_commits:
+                    print(f"  {sha[:8]}")
+            else:
+                print("No commits to replay; branch is effectively up-to-date with base")
+            return
+
+        # Create safety backup
+        backup_branch = f"backup-{branch}-rebase-skip-{self.run_git(['rev-parse', 'HEAD']).stdout.strip()[:8]}"
+        self.run_git(["branch", backup_branch, branch])
+        print(f"Created backup branch: {backup_branch}")
+
+        # Create a temp branch from base and replay unique commits
+        temp_branch = f"{branch}-rebased"
+        # Start from base
+        self.run_git(["switch", "-c", temp_branch, base_ref])
+
+        for sha in unique_commits:
+            result = self.run_git(["cherry-pick", sha], check_output=False)
+            if result.returncode != 0:
+                print(f"Cherry-pick failed for {sha[:8]}: {result.stderr}")
+                print("Aborting cherry-pick and restoring original branch...")
+                self.run_git(["cherry-pick", "--abort"], check_output=False)
+                # Restore original branch
+                self.run_git(["switch", branch], check_output=False)
+                # Cleanup temp branch
+                self.run_git(["branch", "-D", temp_branch], check_output=False)
+                print(f"You can recover previous state from {backup_branch}")
+                return
+
+        # Fast-forward branch to the temp branch state
+        self.run_git(["branch", "-f", branch, temp_branch])
+        self.run_git(["switch", branch])
+        self.run_git(["branch", "-D", temp_branch], check_output=False)
+        print("Rebase-skip-merged completed successfully.")
+
     def run(
         self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3
     ) -> None:

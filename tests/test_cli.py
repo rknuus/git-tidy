@@ -9,6 +9,7 @@ from git_tidy.cli import (
     cmd_split_commits,
     cmd_squash_all,
     cmd_configure_repo,
+    cmd_rebase_skip_merged,
     create_parser,
     main,
 )
@@ -35,6 +36,7 @@ class TestCLI:
         assert "split-commits" in help_output
         assert "squash-all" in help_output
         assert "configure-repo" in help_output
+        assert "rebase-skip-merged" in help_output
 
     def test_parse_group_commits_default(self):
         """Test parsing group-commits with default arguments."""
@@ -331,6 +333,28 @@ class TestCLI:
         cmd_configure_repo(args)
 
         mock_configure.assert_called_once()
+
+    def test_parse_rebase_skip_merged_defaults(self):
+        """Test parsing rebase-skip-merged with defaults."""
+        parser = create_parser()
+        args = parser.parse_args(["rebase-skip-merged"])
+
+        assert args.command == "rebase-skip-merged"
+        assert args.base is None
+        assert args.branch is None
+        assert args.dry_run is False
+
+    @patch.object(GitTidy, "rebase_skip_merged")
+    def test_cmd_rebase_skip_merged_dispatch(self, mock_rsm):
+        """Test dispatch of rebase-skip-merged to core with options."""
+        args = Mock()
+        args.base = "origin/main"
+        args.branch = "feature/B"
+        args.dry_run = True
+
+        cmd_rebase_skip_merged(args)
+
+        mock_rsm.assert_called_once_with(base_ref="origin/main", branch="feature/B", dry_run=True)
 
     def test_integration_help_output(self):
         """Integration test for help output."""

@@ -512,6 +512,48 @@ class TestGitTidy:
         )
 
     @patch.object(GitTidy, "run_git")
+    def test_rebase_skip_merged_dry_run(self, mock_run_git):
+        """Test rebase_skip_merged dry-run prints unique commits."""
+        # branch --show-current
+        # fetch --all --prune (ignored)
+        # cherry -v base branch -> + lines
+        mock_run_git.side_effect = [
+            Mock(stdout="feature/B"),  # current branch
+            Mock(),  # fetch
+            Mock(stdout="+ abc123 Commit A\n- def456 Commit elsewhere\n+ ghi789 Commit B"),  # cherry
+        ]
+
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.rebase_skip_merged(base_ref="origin/main", branch=None, dry_run=True)
+
+        mock_print.assert_any_call("Found 2 commits unique to feature/B relative to origin/main")
+        mock_print.assert_any_call("Would replay (oldest to newest):")
+
+    @patch.object(GitTidy, "run_git")
+    def test_rebase_skip_merged_exec_success(self, mock_run_git):
+        """Test successful execution of rebase_skip_merged."""
+        # current branch, fetch, cherry list, rev-parse HEAD, branch backup,
+        # switch temp, cherry-pick for each sha, branch -f, switch back, branch -D
+        mock_run_git.side_effect = [
+            Mock(stdout="feature/B"),  # current branch
+            Mock(),  # fetch
+            Mock(stdout="+ abc123 A\n+ ghi789 B"),  # cherry
+            Mock(stdout="deadbeefdeadbeef"),  # rev-parse HEAD
+            Mock(),  # branch backup
+            Mock(),  # switch -c temp from base
+            Mock(returncode=0),  # cherry-pick abc123
+            Mock(returncode=0),  # cherry-pick ghi789
+            Mock(),  # branch -f
+            Mock(),  # switch branch
+            Mock(),  # branch -D temp
+        ]
+
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.rebase_skip_merged(base_ref="origin/main", branch=None, dry_run=False)
+
+        mock_print.assert_any_call("Rebase-skip-merged completed successfully.")
+
+    @patch.object(GitTidy, "run_git")
     def test_configure_repo_dry_run(self, mock_run_git):
         """Test configure_repo dry-run prints planned changes."""
         options = {"scope": "local", "preset": "safe", "dry_run": True}

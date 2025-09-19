@@ -92,6 +92,13 @@ def cmd_configure_repo(args: argparse.Namespace) -> None:
     git_tidy.configure_repo(options)
 
 
+def cmd_rebase_skip_merged(args: argparse.Namespace) -> None:
+    """Handle the rebase-skip-merged subcommand."""
+    git_tidy = GitTidy()
+
+    git_tidy.rebase_skip_merged(base_ref=args.base, branch=args.branch, dry_run=bool(args.dry_run))
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -228,6 +235,30 @@ Examples:
         help="Restore the last backup and exit",
     )
     configure_parser.set_defaults(func=cmd_configure_repo)
+
+    # rebase-skip-merged subcommand
+    rsm_parser = subparsers.add_parser(
+        "rebase-skip-merged",
+        help="Rebase current (or given) branch onto base, skipping commits already on base by content",
+        description=(
+            "Rebase while skipping commits whose content already exists on base (patch-id equivalence). "
+            "Helps when an ancestor branch was rebased but landed unchanged on main."
+        ),
+    )
+    rsm_parser.add_argument(
+        "--base",
+        help="Base commit/branch to rebase onto (default: origin/main)",
+    )
+    rsm_parser.add_argument(
+        "--branch",
+        help="Branch to rebase (default: current branch)",
+    )
+    rsm_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show which commits would be replayed without changing anything",
+    )
+    rsm_parser.set_defaults(func=cmd_rebase_skip_merged)
 
     return parser
 
