@@ -122,6 +122,73 @@ def cmd_rebase_skip_merged(args: argparse.Namespace) -> None:
     git_tidy.rebase_skip_merged(options)
 
 
+def cmd_preflight_check(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    options = {
+        "base": args.base,
+        "branch": args.branch,
+        "allow_dirty": args.allow_dirty,
+        "allow_wip": args.allow_wip,
+        "dry_run": args.dry_run,
+    }
+    git_tidy.preflight_check(options)
+
+
+def cmd_select_base(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    options = {"preferred": args.preferred, "fallback": args.fallback}
+    base = git_tidy.select_base(options)
+    print(base)
+
+
+def cmd_auto_continue(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    git_tidy.auto_continue()
+
+
+def cmd_auto_resolve_trivial(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    git_tidy.auto_resolve_trivial()
+
+
+def cmd_chunked_replay(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    commits = args.commits.split(",") if args.commits else []
+    options = {"base": args.base, "commits": commits, "chunk_size": args.chunk_size}
+    git_tidy.chunked_replay(options)
+
+
+def cmd_range_diff_report(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    git_tidy.range_diff_report(args.old, args.new)
+
+
+def cmd_validate(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    options = {
+        "lint": args.lint,
+        "test": args.test,
+        "build": args.build,
+    }
+    git_tidy.validate(options)
+
+
+def cmd_rerere_share(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    options = {"action": args.action, "path": args.path}
+    git_tidy.rerere_share(options)
+
+
+def cmd_checkpoint_create(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    git_tidy.create_backup()
+
+
+def cmd_checkpoint_restore(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    git_tidy.restore_from_backup()
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -347,6 +414,109 @@ Examples:
     summary_group.add_argument("--no-summary", dest="summary", action="store_false")
     rsm_parser.set_defaults(summary=True)
     rsm_parser.set_defaults(func=cmd_rebase_skip_merged)
+
+    # preflight-check
+    pre_parser = subparsers.add_parser(
+        "preflight-check",
+        help="Verify clean worktree, fetch, and basic guards",
+    )
+    pre_parser.add_argument("--base")
+    pre_parser.add_argument("--branch")
+    allow_dirty = pre_parser.add_mutually_exclusive_group()
+    allow_dirty.add_argument("--allow-dirty", dest="allow_dirty", action="store_true")
+    allow_dirty.add_argument("--no-allow-dirty", dest="allow_dirty", action="store_false")
+    pre_parser.set_defaults(allow_dirty=False)
+    allow_wip = pre_parser.add_mutually_exclusive_group()
+    allow_wip.add_argument("--allow-wip", dest="allow_wip", action="store_true")
+    allow_wip.add_argument("--no-allow-wip", dest="allow_wip", action="store_false")
+    pre_parser.set_defaults(allow_wip=False)
+    dry_group = pre_parser.add_mutually_exclusive_group()
+    dry_group.add_argument("--dry-run", dest="dry_run", action="store_true")
+    dry_group.add_argument("--no-dry-run", dest="dry_run", action="store_false")
+    pre_parser.set_defaults(dry_run=False)
+    pre_parser.set_defaults(func=cmd_preflight_check)
+
+    # select-base
+    sel_parser = subparsers.add_parser(
+        "select-base",
+        help="Select a sensible rebase base (merge-base or fallback)",
+    )
+    sel_parser.add_argument("--preferred", nargs="+", default=["origin/main", "main", "origin/master", "master"])
+    sel_parser.add_argument("--fallback", default="HEAD~10")
+    sel_parser.set_defaults(func=cmd_select_base)
+
+    # auto-continue
+    ac_parser = subparsers.add_parser(
+        "auto-continue",
+        help="Continue cherry-pick/rebase if possible",
+    )
+    ac_parser.set_defaults(func=cmd_auto_continue)
+
+    # auto-resolve-trivial
+    art_parser = subparsers.add_parser(
+        "auto-resolve-trivial",
+        help="Attempt trivial auto-resolutions and continue",
+    )
+    art_parser.set_defaults(func=cmd_auto_resolve_trivial)
+
+    # chunked-replay
+    cr_parser = subparsers.add_parser(
+        "chunked-replay",
+        help="Replay given commits in chunks on top of a base",
+    )
+    cr_parser.add_argument("--base", required=True)
+    cr_parser.add_argument("--commits", help="Comma-separated SHAs")
+    cr_parser.add_argument("--chunk-size", type=int, required=True)
+    cr_parser.set_defaults(func=cmd_chunked_replay)
+
+    # range-diff-report
+    rdiff_parser = subparsers.add_parser(
+        "range-diff-report",
+        help="Print git range-diff between two ranges",
+    )
+    rdiff_parser.add_argument("old", help="Old range (e.g., origin/main...branch)")
+    rdiff_parser.add_argument("new", help="New range")
+    rdiff_parser.set_defaults(func=cmd_range_diff_report)
+
+    # validate
+    val_parser = subparsers.add_parser(
+        "validate",
+        help="Run lint/tests/build and report",
+    )
+    lint_group = val_parser.add_mutually_exclusive_group()
+    lint_group.add_argument("--lint", dest="lint", action="store_true")
+    lint_group.add_argument("--no-lint", dest="lint", action="store_false")
+    val_parser.set_defaults(lint=False)
+    test_group = val_parser.add_mutually_exclusive_group()
+    test_group.add_argument("--test", dest="test", action="store_true")
+    test_group.add_argument("--no-test", dest="test", action="store_false")
+    val_parser.set_defaults(test=False)
+    build_group = val_parser.add_mutually_exclusive_group()
+    build_group.add_argument("--build", dest="build", action="store_true")
+    build_group.add_argument("--no-build", dest="build", action="store_false")
+    val_parser.set_defaults(build=False)
+    val_parser.set_defaults(func=cmd_validate)
+
+    # rerere-share
+    rr_parser = subparsers.add_parser(
+        "rerere-share",
+        help="Import or export a rerere cache",
+    )
+    rr_parser.add_argument("--action", choices=["import", "export"], required=True)
+    rr_parser.add_argument("--path", required=True)
+    rr_parser.set_defaults(func=cmd_rerere_share)
+
+    # checkpoints
+    cpc_parser = subparsers.add_parser(
+        "checkpoint-create",
+        help="Create a git-tidy backup checkpoint",
+    )
+    cpc_parser.set_defaults(func=cmd_checkpoint_create)
+    cpr_parser = subparsers.add_parser(
+        "checkpoint-restore",
+        help="Restore from last git-tidy backup",
+    )
+    cpr_parser.set_defaults(func=cmd_checkpoint_restore)
 
     return parser
 

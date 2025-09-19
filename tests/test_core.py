@@ -763,3 +763,49 @@ class TestGitTidy:
         mock_get_commits.assert_called_once_with(None)
         mock_restore.assert_called_once()
         mock_print.assert_called_with("Error: Git error")
+
+    @patch.object(GitTidy, "run_git")
+    def test_preflight_check_clean(self, mock_run_git):
+        # fetch, status clean, head subject, ahead count
+        mock_run_git.side_effect = [
+            Mock(stdout="feature/B"),  # show-current
+            Mock(),  # fetch
+            Mock(stdout=""),  # status clean
+            Mock(stdout="feat: ok"),  # head subject
+            Mock(stdout="1\t2"),  # ahead/behind
+        ]
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.preflight_check({"allow_dirty": True, "allow_wip": False, "dry_run": True})
+        mock_print.assert_any_call("Preflight OK. Behind/ahead (base...branch): 1\t2")
+
+    @patch.object(GitTidy, "run_git")
+    def test_select_base_prefers_first_available(self, mock_run_git):
+        # merge-base for first preferred succeeds
+        mock_run_git.return_value = Mock(stdout="base123")
+        base = self.git_tidy.select_base({"preferred": ["origin/main", "master"], "fallback": "HEAD~5"})
+        assert base == "origin/main"
+
+    @patch.object(GitTidy, "run_git")
+    def test_auto_continue_nothing(self, mock_run_git):
+        mock_run_git.side_effect = [Mock(returncode=1), Mock(returncode=1)]
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.auto_continue()
+        mock_print.assert_any_call("Nothing to continue")
+
+    @patch.object(GitTidy, "run_git")
+    def test_chunked_replay_missing_args(self, mock_run_git):
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.chunked_replay({"base": None, "commits": [], "chunk_size": 0})
+        mock_print.assert_any_call("Missing required arguments for chunked-replay")
+
+    @patch.object(GitTidy, "run_git")
+    def test_range_diff_report(self, mock_run_git):
+        mock_run_git.return_value = Mock(returncode=0, stdout="diff ok")
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.range_diff_report("A", "B")
+        mock_print.assert_any_call("diff ok")
+
+    def test_rerere_share_missing(self):
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.rerere_share({})
+        mock_print.assert_any_call("Missing action or path")

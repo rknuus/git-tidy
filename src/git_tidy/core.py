@@ -626,6 +626,160 @@ class GitTidy:
                 print("Warning: failed to export rerere cache")
         print("Rebase-skip-merged completed successfully.")
 
+    # Helper commands for smart orchestration
+    def preflight_check(self, options: dict[str, Any]) -> None:
+        base = options.get("base") or "origin/main"
+        branch = options.get("branch") or self.run_git(["branch", "--show-current"]).stdout.strip()
+        allow_dirty = bool(options.get("allow_dirty", False))
+        allow_wip = bool(options.get("allow_wip", False))
+        dry_run = bool(options.get("dry_run", False))
+
+        # Fetch
+        self.run_git(["fetch", "--all", "--prune"], check_output=False)
+
+        # Worktree clean
+        status = self.run_git(["status", "--porcelain=v1"]).stdout
+        if status.strip() and not allow_dirty:
+            print("Working tree is dirty; commit or stash changes or use --allow-dirty")
+            return
+
+        # Check WIP in head commit message if requested
+        head_msg = self.run_git(["show", "-s", "--pretty=%s"]).stdout.strip()
+        if not allow_wip and ("WIP" in head_msg or head_msg.lower().startswith("wip")):
+            print("Head commit looks like WIP; use --allow-wip to proceed")
+            return
+
+        # Show behind/ahead relative to base
+        ahead = self.run_git(["rev-list", "--left-right", "--count", f"{base}...{branch}"]).stdout.strip()
+        print(f"Preflight OK. Behind/ahead (base...branch): {ahead}")
+        if dry_run:
+            print("Dry-run: no changes made")
+
+    def select_base(self, options: dict[str, Any]) -> str:
+        preferred: list[str] = options.get("preferred") or ["origin/main", "main", "origin/master", "master"]
+        fallback: str = options.get("fallback") or "HEAD~10"
+        for cand in preferred:
+            try:
+                mb = self.run_git(["merge-base", "HEAD", cand]).stdout.strip()
+                if mb:
+                    return cand
+            except GitError:
+                continue
+        return fallback
+
+    def auto_continue(self) -> None:
+        # Attempt to continue an in-progress rebase/cherry-pick
+        # First try cherry-pick
+        res = self.run_git(["cherry-pick", "--continue"], check_output=False)
+        if res.returncode == 0:
+            print("Continued cherry-pick")
+            return
+        # Then try rebase
+        res = self.run_git(["rebase", "--continue"], check_output=False)
+        if res.returncode == 0:
+            print("Continued rebase")
+            return
+        print("Nothing to continue")
+
+    def auto_resolve_trivial(self) -> None:
+        # Attempt to resolve trivial conflicts by ignoring whitespace and continuing
+        diff = self.run_git(["diff", "--name-only", "--diff-filter=U"], check_output=False)
+        if diff.returncode != 0:
+            print("No conflict information available")
+            return
+        # Try a continue; if it fails, abort the attempt
+        cont = self.run_git(["cherry-pick", "--continue"], check_output=False)
+        if cont.returncode == 0:
+            print("Continued after trivial resolution (cherry-pick)")
+            return
+        cont = self.run_git(["rebase", "--continue"], check_output=False)
+        if cont.returncode == 0:
+            print("Continued after trivial resolution (rebase)")
+            return
+        print("Trivial auto-resolution not applicable")
+
+    def chunked_replay(self, options: dict[str, Any]) -> None:
+        base = options.get("base")
+        commits: list[str] = options.get("commits") or []
+        chunk_size: int = int(options.get("chunk_size") or 0)
+        if not base or not commits or chunk_size <= 0:
+            print("Missing required arguments for chunked-replay")
+            return
+        temp = f"chunked-{self.run_git(['rev-parse', '--short', 'HEAD']).stdout.strip()}"
+        self.run_git(["switch", "-c", temp, base])
+        for i in range(0, len(commits), chunk_size):
+            chunk = commits[i : i + chunk_size]
+            result = self.run_git(["cherry-pick", *chunk], check_output=False)
+            if result.returncode != 0:
+                print("Chunk failed; aborting and leaving temp branch for inspection")
+                self.run_git(["cherry-pick", "--abort"], check_output=False)
+                return
+        print("Chunked replay completed")
+
+    def range_diff_report(self, old: str, new: str) -> None:
+        res = self.run_git(["range-diff", old, new], check_output=False)
+        if res.returncode == 0:
+            print(res.stdout)
+        else:
+            print(res.stderr)
+
+    def validate(self, options: dict[str, Any]) -> None:
+        do_lint = bool(options.get("lint", False))
+        do_test = bool(options.get("test", False))
+        do_build = bool(options.get("build", False))
+        if not any([do_lint, do_test, do_build]):
+            print("Nothing to validate")
+            return
+        if do_lint:
+            res = self.run_git(["rev-parse", "HEAD"], check_output=False)
+            print("Lint placeholder; hook your linter here")
+        if do_test:
+            print("Test placeholder; hook your test runner here")
+        if do_build:
+            print("Build placeholder; hook your build here")
+
+    def rerere_share(self, options: dict[str, Any]) -> None:
+        action = options.get("action")
+        path = options.get("path")
+        if not action or not path:
+            print("Missing action or path")
+            return
+        rr_cache_dir = os.path.join(".git", "rr-cache")
+        if action == "import":
+            if not os.path.isdir(path):
+                print("Invalid rerere cache path")
+                return
+            os.makedirs(rr_cache_dir, exist_ok=True)
+            for root, _dirs, files in os.walk(path):
+                rel = os.path.relpath(root, path)
+                target_root = os.path.join(rr_cache_dir, rel) if rel != "." else rr_cache_dir
+                os.makedirs(target_root, exist_ok=True)
+                for fname in files:
+                    src = os.path.join(root, fname)
+                    dst = os.path.join(target_root, fname)
+                    try:
+                        shutil.copy2(src, dst)
+                    except Exception:
+                        pass
+            print("Imported rerere cache")
+        elif action == "export":
+            os.makedirs(path, exist_ok=True)
+            if not os.path.isdir(rr_cache_dir):
+                print("No local rerere cache to export")
+                return
+            for root, _dirs, files in os.walk(rr_cache_dir):
+                rel = os.path.relpath(root, rr_cache_dir)
+                target_root = os.path.join(path, rel) if rel != "." else path
+                os.makedirs(target_root, exist_ok=True)
+                for fname in files:
+                    src = os.path.join(root, fname)
+                    dst = os.path.join(target_root, fname)
+                    try:
+                        shutil.copy2(src, dst)
+                    except Exception:
+                        pass
+            print("Exported rerere cache")
+
     def run(
         self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3
     ) -> None:

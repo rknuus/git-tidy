@@ -417,6 +417,23 @@ class TestCLI:
             parser.parse_args(["squash-all", "--help"])
         assert exc_info.value.code == 0
 
+        # Test new helper commands help
+        for cmd in [
+            "preflight-check",
+            "select-base",
+            "auto-continue",
+            "auto-resolve-trivial",
+            "chunked-replay",
+            "range-diff-report",
+            "validate",
+            "rerere-share",
+            "checkpoint-create",
+            "checkpoint-restore",
+        ]:
+            with pytest.raises(SystemExit) as exc_info:
+                parser.parse_args([cmd, "--help"])
+            assert exc_info.value.code == 0
+
     @patch("sys.argv", ["git-tidy"])
     @patch("git_tidy.cli.create_parser")
     def test_main_integration_no_args(self, mock_create_parser):
