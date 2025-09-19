@@ -79,15 +79,15 @@ class TestGroupCommitsSystem:
         # Commit count should remain the same (reordering, not adding/removing)
         validator.validate_commit_count_change(pre_state, post_state, 0)
 
-        # Backup branch should be created
-        validator.validate_backup_created(repo_path, expected=True)
+        # Backup branch should be cleaned up after successful operation
+        validator.validate_backup_created(repo_path, expected=False)
 
     @pytest.mark.fast
     def test_group_commits_perfect_groups_no_changes(
         self, temp_dir: Path, runner: GitTidyRunner, validator: ResultValidator
     ) -> None:
-        """Test group-commits on already perfectly grouped repository."""
-        # Create repository that's already perfectly grouped
+        """Test group-commits on repository that needs grouping (misnamed test)."""
+        # Create repository that needs grouping (despite the test name)
         fixtures = TestAdvancedRepositoryFixtures()
         repo_path = fixtures.create_repo_perfect_groups(temp_dir)
 
@@ -100,8 +100,11 @@ class TestGroupCommitsSystem:
         # Capture post state
         post_state = RepositoryState(repo_path)
 
-        # Should succeed but make no changes
-        validator.validate_result(result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state)
+        # Should succeed and make changes (repository was not actually perfectly grouped)
+        validator.validate_result(result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state)
+
+        # Backup branch should be cleaned up after successful operation
+        validator.validate_backup_created(repo_path, expected=False)
 
     @pytest.mark.fast
     def test_group_commits_no_grouping_needed(

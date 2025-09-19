@@ -49,6 +49,11 @@ class RepositoryBuilder:
             "HEAD", self.author, self.committer, message, tree_id, parents
         )
 
+        # Read the committed tree back into the index to keep it in sync with the commit
+        commit = self.repo[commit_id]
+        self.repo.index.read_tree(commit.tree)
+        self.repo.index.write()
+
         return commit_id
 
     def create_branch(self, name: str, target: Optional[str] = None) -> pygit2.Branch:

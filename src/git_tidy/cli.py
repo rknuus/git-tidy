@@ -22,7 +22,7 @@ def cmd_group_commits(args: argparse.Namespace) -> None:
             for commit in group:
                 print(f"    {commit['sha'][:8]} {commit['subject']}")
     else:
-        git_tidy.run(args.base, args.threshold)
+        git_tidy.run(args.base, args.threshold, no_prompt=getattr(args, 'no_prompt', False))
 
 
 def cmd_split_commits(args: argparse.Namespace) -> None:
@@ -42,7 +42,7 @@ def cmd_split_commits(args: argparse.Namespace) -> None:
             for file in sorted(commit["files"]):
                 print(f"    - split off {file}")
     else:
-        git_tidy.split_commits(args.base)
+        git_tidy.split_commits(args.base, no_prompt=getattr(args, 'no_prompt', False))
 
 
 def cmd_squash_all(args: argparse.Namespace) -> None:
@@ -322,6 +322,11 @@ Examples:
         action="store_true",
         help="Show proposed grouping without performing rebase",
     )
+    group_parser.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help="Proceed without prompting for confirmation",
+    )
     group_parser.set_defaults(func=cmd_group_commits)
 
     # split-commits subcommand
@@ -338,6 +343,11 @@ Examples:
         "--dry-run",
         action="store_true",
         help="Show proposed splitting without performing rebase",
+    )
+    split_parser.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help="Proceed without prompting for confirmation",
     )
     split_parser.set_defaults(func=cmd_split_commits)
 

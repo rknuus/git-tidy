@@ -127,14 +127,14 @@ class GitTidyRunner:
         # Commands that use --apply
         apply_commands = {"smart-merge", "smart-revert"}
         # Commands that use --no-prompt
-        prompt_commands = {"smart-rebase", "rebase-skip-merged"}
+        prompt_commands = {"smart-rebase", "rebase-skip-merged", "group-commits", "split-commits"}
 
         if command in apply_commands:
             apply_args = args + ["--apply", "--no-prompt"]
         elif command in prompt_commands:
             apply_args = args + ["--no-prompt"]
         else:
-            # Commands like group-commits and split-commits don't use --apply
+            # Remove dry-run for other commands
             apply_args = [arg for arg in args if arg not in ["--dry-run"]]
 
         return self.run_command(repo_path, command, apply_args)
@@ -152,8 +152,10 @@ class GitTidyRunner:
             "would merge",
             "would revert",
             "would rebase",
+            "would group",  # For group-commits
             "changes to be made",
             "commits to process",
+            "group into",  # For group-commits output like "would group into 3 groups"
         ]
 
         output_text = (result.stdout + result.stderr).lower()

@@ -82,20 +82,58 @@ class GitTidy:
             self.run_git(["branch", "-D", self.backup_branch], check_output=False)
             print(f"Cleaned up backup branch: {self.backup_branch}")
 
+    def _determine_base_commit(self) -> str:
+        """Determine the base commit for reordering."""
+        # Get current branch name
+        try:
+            current_branch = self.run_git(["branch", "--show-current"]).stdout.strip()
+        except GitError:
+            current_branch = ""
+
+        # If we're on main/master, use recent commits
+        if current_branch in ["main", "master"] or not current_branch:
+            # Use the last 10 commits, but ensure we don't go beyond repository root
+            try:
+                # Check how many commits we have
+                commit_count_result = self.run_git(["rev-list", "--count", "HEAD"])
+                commit_count = int(commit_count_result.stdout.strip())
+
+                # Use at most 10 commits or all commits if fewer
+                commits_to_use = min(10, commit_count)
+                if commits_to_use <= 1:
+                    # Not enough commits to reorder
+                    return "HEAD"
+
+                return f"HEAD~{commits_to_use - 1}"
+            except (GitError, ValueError):
+                return "HEAD"
+        else:
+            # Try to find merge base with main/master for feature branches
+            for main_branch in ["main", "master", "origin/main", "origin/master"]:
+                try:
+                    base_ref = self.run_git(["merge-base", "HEAD", main_branch]).stdout.strip()
+                    # Verify this isn't HEAD itself (which means we're on main)
+                    head_sha = self.run_git(["rev-parse", "HEAD"]).stdout.strip()
+                    if base_ref != head_sha:
+                        return base_ref
+                except GitError:
+                    continue
+
+            # Fallback to recent commits
+            try:
+                commit_count_result = self.run_git(["rev-list", "--count", "HEAD"])
+                commit_count = int(commit_count_result.stdout.strip())
+                commits_to_use = min(10, commit_count)
+                if commits_to_use <= 1:
+                    return "HEAD"
+                return f"HEAD~{commits_to_use - 1}"
+            except (GitError, ValueError):
+                return "HEAD"
+
     def get_commits_to_rebase(self, base_ref: Optional[str] = None) -> list[CommitInfo]:
         """Get list of commits to reorder."""
         if base_ref is None:
-            # Find merge base with main/master
-            try:
-                base_ref = self.run_git(["merge-base", "HEAD", "main"]).stdout.strip()
-            except GitError:
-                try:
-                    base_ref = self.run_git(
-                        ["merge-base", "HEAD", "master"]
-                    ).stdout.strip()
-                except GitError:
-                    # Fallback to last 10 commits
-                    base_ref = "HEAD~10"
+            base_ref = self._determine_base_commit()
 
         # Get commit range
         commit_range = f"{base_ref}..HEAD"
@@ -205,7 +243,7 @@ class GitTidy:
             sample_files = sorted(all_files)[:3]
             return f"Files: {', '.join(sample_files)} and {len(all_files) - 3} more"
 
-    def perform_rebase(self, groups: list[list[CommitInfo]]) -> bool:
+    def perform_rebase(self, groups: list[list[CommitInfo]], no_prompt: bool = False) -> bool:
         """Perform the actual rebase operation."""
         if len(groups) <= 1:
             print("No grouping needed - commits are already optimally ordered")
@@ -228,10 +266,11 @@ class GitTidy:
             )
 
         # Confirm with user
-        response = input("\nProceed with rebase? (y/N): ")
-        if response.lower() != "y":
-            print("Rebase cancelled")
-            return False
+        if not no_prompt:
+            response = input("\nProceed with rebase? (y/N): ")
+            if response.lower() != "y":
+                print("Rebase cancelled")
+                return False
 
         # Write todo to temporary file and start interactive rebase
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -257,7 +296,7 @@ class GitTidy:
         finally:
             os.unlink(todo_file)
 
-    def perform_split_rebase(self, commits: list[CommitInfo]) -> bool:
+    def perform_split_rebase(self, commits: list[CommitInfo], no_prompt: bool = False) -> bool:
         """Perform the actual split rebase operation."""
         # Check if any commits need splitting
         needs_splitting = any(len(commit["files"]) > 1 for commit in commits)
@@ -287,10 +326,11 @@ class GitTidy:
                 )
 
         # Confirm with user
-        response = input("\nProceed with split rebase? (y/N): ")
-        if response.lower() != "y":
-            print("Split rebase cancelled")
-            return False
+        if not no_prompt:
+            response = input("\nProceed with split rebase? (y/N): ")
+            if response.lower() != "y":
+                print("Split rebase cancelled")
+                return False
 
         # Reset to base commit
         print(f"Resetting to base commit {base_commit[:8]}...")
@@ -336,7 +376,7 @@ class GitTidy:
 
         return True
 
-    def split_commits(self, base_ref: Optional[str] = None) -> None:
+    def split_commits(self, base_ref: Optional[str] = None, no_prompt: bool = False) -> None:
         """Split commits into separate commits, one per file."""
         try:
             # Create backup
@@ -352,7 +392,7 @@ class GitTidy:
             print(f"Found {len(commits)} commits to split")
 
             # Perform split rebase
-            success = self.perform_split_rebase(commits)
+            success = self.perform_split_rebase(commits, no_prompt=no_prompt)
 
             if success:
                 self.cleanup_backup()
@@ -1140,7 +1180,7 @@ class GitTidy:
         return [s for s in shas if s]
 
     def run(
-        self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3
+        self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3, no_prompt: bool = False
     ) -> None:
         """Main execution function."""
         try:
@@ -1160,7 +1200,7 @@ class GitTidy:
             groups = self.group_commits(commits, similarity_threshold)
 
             # Perform rebase
-            success = self.perform_rebase(groups)
+            success = self.perform_rebase(groups, no_prompt=no_prompt)
 
             if success:
                 self.cleanup_backup()
