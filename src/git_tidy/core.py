@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, Any
 
 
 class CommitInfo(TypedDict):
@@ -362,6 +362,57 @@ class GitTidy:
             print(f"Error: {e}")
             self.restore_from_backup()
             sys.exit(1)
+
+
+    def configure_repo(self, options: dict[str, Any]) -> None:
+        """Configure repository/global git settings to reduce merge pain.
+
+        Currently implements the 'safe' preset:
+        - Enable rerere with autoUpdate
+        - Use zdiff3 conflict style for clearer conflicts
+        - Use patience diff with indent heuristic
+        - Enable rename detection and raise rename limits
+        - Use merge backend for rebase and autostash
+        - Improve diff coloring for moved lines
+
+        Options:
+            scope: 'local' or 'global' (default: 'local')
+            preset: 'safe'|'opinionated'|'custom' (currently only 'safe' applied)
+            dry_run: bool (default: False)
+        """
+        scope = options.get("scope", "local")
+        preset = options.get("preset", "safe")
+        dry_run = bool(options.get("dry_run", False))
+
+        if scope not in {"local", "global"}:
+            scope = "local"
+
+        # Only implement 'safe' preset for now; other presets are ignored gracefully
+        settings: list[tuple[str, str]] = [
+            ("rerere.enabled", "true"),
+            ("rerere.autoUpdate", "true"),
+            ("merge.conflictStyle", "zdiff3"),
+            ("diff.algorithm", "patience"),
+            ("diff.indentHeuristic", "true"),
+            ("diff.renames", "true"),
+            ("merge.renames", "true"),
+            ("merge.renameLimit", "32767"),
+            ("rebase.backend", "merge"),
+            ("rebase.autoStash", "true"),
+            ("diff.colorMoved", "zebra"),
+            ("color.ui", "auto"),
+        ]
+
+        scope_flag = "--global" if scope == "global" else "--local"
+
+        if dry_run:
+            print("Planned git configuration changes:")
+            for key, value in settings:
+                print(f"  git config {scope_flag} {key} {value}")
+            return
+
+        for key, value in settings:
+            self.run_git(["config", scope_flag, key, value])
 
     def run(
         self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3

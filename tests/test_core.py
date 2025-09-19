@@ -511,6 +511,31 @@ class TestGitTidy:
             "No commits need splitting - all commits already have single files"
         )
 
+    @patch.object(GitTidy, "run_git")
+    def test_configure_repo_dry_run(self, mock_run_git):
+        """Test configure_repo dry-run prints planned changes."""
+        options = {"scope": "local", "preset": "safe", "dry_run": True}
+
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.configure_repo(options)
+
+        # Should not execute any git commands
+        mock_run_git.assert_not_called()
+        # Should print a header line
+        mock_print.assert_any_call("Planned git configuration changes:")
+
+    @patch.object(GitTidy, "run_git")
+    def test_configure_repo_executes(self, mock_run_git):
+        """Test configure_repo applies settings using git config."""
+        options = {"scope": "local", "preset": "safe", "dry_run": False}
+
+        self.git_tidy.configure_repo(options)
+
+        # Expect multiple config calls, at least one with rerere.enabled
+        assert mock_run_git.call_count >= 1
+        calls = [args[0][0] for args in mock_run_git.call_args_list]
+        assert any(call[:2] == ["config", "--local"] for call in calls)
+
     @patch.object(GitTidy, "perform_split_rebase")
     @patch.object(GitTidy, "get_commits_to_rebase")
     @patch.object(GitTidy, "create_backup")

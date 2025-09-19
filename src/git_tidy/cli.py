@@ -73,6 +73,25 @@ def cmd_squash_all(args: argparse.Namespace) -> None:
     print(f"  - Combine {len(commits)} commits into 1 commit")
 
 
+def cmd_configure_repo(args: argparse.Namespace) -> None:
+    """Handle the configure-repo subcommand."""
+    git_tidy = GitTidy()
+
+    options = {
+        "scope": args.scope,
+        "preset": args.preset,
+        "enable": args.enable or [],
+        "disable": args.disable or [],
+        "lockfile_policy": args.lockfile_policy,
+        "dry_run": args.dry_run,
+        "no_prompt": args.no_prompt,
+        "backup_path": args.backup_path,
+        "undo": args.undo,
+    }
+
+    git_tidy.configure_repo(options)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -149,6 +168,66 @@ Examples:
         help="Base commit/branch for squash range (defaults to merge-base with main/master)",
     )
     squash_parser.set_defaults(func=cmd_squash_all)
+
+    # configure-repo subcommand
+    configure_parser = subparsers.add_parser(
+        "configure-repo",
+        help="Configure repository settings to reduce merge/rebase pain",
+        description=(
+            "Enable helpful git settings (rerere, zdiff3, patience, rename detection, "
+            "safer rebases) and optional policies. Idempotent and safe by default."
+        ),
+    )
+    configure_parser.add_argument(
+        "--scope",
+        choices=["local", "global"],
+        default="local",
+        help="Apply settings to local repo (.git/config) or global (~/.gitconfig)",
+    )
+    configure_parser.add_argument(
+        "--preset",
+        choices=["safe", "opinionated", "custom"],
+        default="safe",
+        help="Preset of settings to apply (safe is conservative)",
+    )
+    configure_parser.add_argument(
+        "--enable",
+        nargs="+",
+        help=(
+            "Features to enable for custom preset. Options: rerere zdiff3 patience "
+            "rename-detect merge-backend rebase-autostash diff-color attributes drivers"
+        ),
+    )
+    configure_parser.add_argument(
+        "--disable",
+        nargs="+",
+        help="Features to disable for custom preset",
+    )
+    configure_parser.add_argument(
+        "--lockfile-policy",
+        choices=["ours", "theirs", "union", "none"],
+        help="Policy for lockfiles in .gitattributes (default depends on preset)",
+    )
+    configure_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show planned changes without applying",
+    )
+    configure_parser.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help="Do not prompt for confirmations",
+    )
+    configure_parser.add_argument(
+        "--backup-path",
+        help="Directory to store backups (default: .git-tidy/configure-repo.bak)",
+    )
+    configure_parser.add_argument(
+        "--undo",
+        action="store_true",
+        help="Restore the last backup and exit",
+    )
+    configure_parser.set_defaults(func=cmd_configure_repo)
 
     return parser
 

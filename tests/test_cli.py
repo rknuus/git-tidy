@@ -8,6 +8,7 @@ from git_tidy.cli import (
     cmd_group_commits,
     cmd_split_commits,
     cmd_squash_all,
+    cmd_configure_repo,
     create_parser,
     main,
 )
@@ -33,6 +34,7 @@ class TestCLI:
         assert "group-commits" in help_output
         assert "split-commits" in help_output
         assert "squash-all" in help_output
+        assert "configure-repo" in help_output
 
     def test_parse_group_commits_default(self):
         """Test parsing group-commits with default arguments."""
@@ -295,6 +297,40 @@ class TestCLI:
         main()
 
         mock_func.assert_called_once_with(mock_args)
+
+    def test_parse_configure_repo_defaults(self):
+        """Test parsing configure-repo with defaults."""
+        parser = create_parser()
+        args = parser.parse_args(["configure-repo"])
+
+        assert args.command == "configure-repo"
+        assert args.scope == "local"
+        assert args.preset == "safe"
+        assert args.enable is None
+        assert args.disable is None
+        assert args.lockfile_policy is None
+        assert args.dry_run is False
+        assert args.no_prompt is False
+        assert args.backup_path is None
+        assert args.undo is False
+
+    @patch.object(GitTidy, "configure_repo")
+    def test_cmd_configure_repo_dispatch(self, mock_configure):
+        """Test dispatch of configure-repo to core with options."""
+        args = Mock()
+        args.scope = "global"
+        args.preset = "safe"
+        args.enable = ["rerere", "zdiff3"]
+        args.disable = ["drivers"]
+        args.lockfile_policy = "none"
+        args.dry_run = True
+        args.no_prompt = True
+        args.backup_path = ".git-tidy/configure-repo.bak"
+        args.undo = False
+
+        cmd_configure_repo(args)
+
+        mock_configure.assert_called_once()
 
     def test_integration_help_output(self):
         """Integration test for help output."""
