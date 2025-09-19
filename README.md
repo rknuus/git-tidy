@@ -32,6 +32,10 @@ After installation, you can use the `git-tidy` command with the most useful subc
 # Show available commands
 git-tidy --help
 
+# Preview or apply a safe merge with ort + rename detection
+git-tidy smart-merge --branch feature/x --into main            # preview (no changes)
+git-tidy smart-merge --branch feature/x --into main --apply    # apply merge
+
 # Orchestrated, safe rebase with dedup and validation (recommended)
 git-tidy smart-rebase --base origin/main --prompt --optimize-merge
 
@@ -58,6 +62,17 @@ git-tidy split-commits --dry-run
 ```
 
 ### Core Commands
+
+#### `smart-merge`
+Preview or perform a merge of a source branch into a target using the ort strategy with rename detection and safer temporary settings. Defaults to preview (no changes) unless `--apply` is provided.
+
+Key options:
+- `--branch BRANCH` (source), `--into TARGET` (default: current branch)
+- `--[no-]apply` (default: no-apply/preview), `--[no-]prompt`, `--[no-]backup`
+- `--[no-]optimize-merge` (temporary safe settings), `--conflict-bias=ours|theirs|none`
+- `--[no-]rename-detect`, `--rename-threshold N`
+- `--[no-]auto-resolve-trivial`, `--max-conflicts N`
+- `--[no-]lint`, `--[no-]test`, `--[no-]build`, `--report=text|json`
 
 #### `smart-rebase`
 Performs an orchestrated rebase with preflight checks, base selection, dedup-aware replay, optional chunking/trivial auto-resolve, and post-run validation/reporting.

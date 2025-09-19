@@ -8,6 +8,7 @@ from git_tidy.cli import (
     cmd_configure_repo,
     cmd_group_commits,
     cmd_rebase_skip_merged,
+    cmd_smart_merge,
     cmd_smart_rebase,
     cmd_split_commits,
     cmd_squash_all,
@@ -431,10 +432,44 @@ class TestCLI:
             "checkpoint-create",
             "checkpoint-restore",
             "smart-rebase",
+            "smart-merge",
         ]:
             with pytest.raises(SystemExit) as exc_info:
                 parser.parse_args([cmd, "--help"])
             assert exc_info.value.code == 0
+
+    def test_parse_smart_merge_defaults(self):
+        parser = create_parser()
+        args = parser.parse_args(["smart-merge", "--branch", "feature/X"])
+        assert args.command == "smart-merge"
+        assert args.apply is False
+        assert args.prompt is True
+        assert args.backup is True
+        assert args.optimize_merge is False
+        assert args.rename_detect is True
+        assert args.conflict_bias == "none"
+
+    @patch.object(GitTidy, "smart_merge")
+    def test_cmd_smart_merge_dispatch(self, mock_merge):
+        args = Mock()
+        args.branch = "feature/X"
+        args.into = "main"
+        args.apply = False
+        args.prompt = True
+        args.backup = True
+        args.optimize_merge = True
+        args.conflict_bias = "ours"
+        args.rename_detect = True
+        args.rename_threshold = 50
+        args.auto_resolve_trivial = False
+        args.max_conflicts = None
+        args.lint = False
+        args.test = False
+        args.build = False
+        args.report = "text"
+
+        cmd_smart_merge(args)
+        mock_merge.assert_called_once()
 
     def test_parse_smart_rebase_defaults(self):
         parser = create_parser()

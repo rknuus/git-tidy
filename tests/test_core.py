@@ -833,6 +833,52 @@ class TestGitTidy:
         mock_print.assert_any_call("Missing action or path")
 
     @patch.object(GitTidy, "run_git")
+    def test_smart_merge_preview_clean(self, mock_run_git):
+        # switch target, merge --no-commit success, merge --abort
+        mock_run_git.side_effect = [
+            Mock(),  # switch target
+            Mock(returncode=0),  # merge --no-commit clean
+            Mock(),  # merge --abort
+        ]
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.smart_merge(
+                {
+                    "branch": "feature/X",
+                    "into": "main",
+                    "apply": False,
+                    "prompt": False,
+                    "backup": False,
+                    "optimize_merge": False,
+                    "rename_detect": True,
+                }
+            )
+        mock_print.assert_any_call("Merge would be clean")
+
+    @patch.object(GitTidy, "run_git")
+    @patch.object(GitTidy, "create_backup")
+    @patch.object(GitTidy, "cleanup_backup")
+    def test_smart_merge_apply_clean(self, mock_cleanup, mock_backup, mock_run_git):
+        # switch, merge clean
+        mock_run_git.side_effect = [
+            Mock(),  # switch target
+            Mock(returncode=0),  # merge clean
+        ]
+        with patch("builtins.print"):
+            self.git_tidy.smart_merge(
+                {
+                    "branch": "feature/X",
+                    "into": "main",
+                    "apply": True,
+                    "prompt": False,
+                    "backup": True,
+                    "optimize_merge": True,
+                    "rename_detect": True,
+                }
+            )
+        mock_backup.assert_called_once()
+        mock_cleanup.assert_called_once()
+
+    @patch.object(GitTidy, "run_git")
     @patch.object(GitTidy, "select_base")
     @patch.object(GitTidy, "preflight_check")
     @patch.object(GitTidy, "rebase_skip_merged")

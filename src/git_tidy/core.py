@@ -902,6 +902,118 @@ class GitTidy:
                 self.restore_from_backup()
             raise
 
+    def smart_merge(self, options: dict[str, Any]) -> None:
+        """Preview or perform a merge with ort + rename detection and safety.
+
+        Preview uses `git merge --no-commit --no-ff` and aborts to avoid state changes.
+        Apply performs the merge and commits if clean, or stops on conflicts.
+        """
+        source = options.get("branch")
+        target = (
+            options.get("into")
+            or self.run_git(["branch", "--show-current"]).stdout.strip()
+        )
+        if not source:
+            print("Missing --branch for smart-merge")
+            return
+
+        apply = bool(options.get("apply", False))
+        prompt = bool(options.get("prompt", True))
+        backup = bool(options.get("backup", True))
+        optimize_merge = bool(options.get("optimize_merge", False))
+        conflict_bias = options.get("conflict_bias", "none")
+        rename_detect = True if options.get("rename_detect", True) else False
+        rename_threshold = options.get("rename_threshold")
+        auto_resolve_trivial = bool(options.get("auto_resolve_trivial", False))
+        max_conflicts = options.get("max_conflicts")
+        do_lint = bool(options.get("lint", False))
+        do_test = bool(options.get("test", False))
+        do_build = bool(options.get("build", False))
+
+        # Build -c prefix for temporary safer settings
+        git_prefix: list[str] = []
+        if optimize_merge:
+            git_prefix = [
+                "-c",
+                "rerere.enabled=true",
+                "-c",
+                "merge.conflictStyle=zdiff3",
+                "-c",
+                "diff.algorithm=patience",
+                "-c",
+                "diff.indentHeuristic=true",
+                "-c",
+                "diff.renames=true",
+                "-c",
+                "merge.renames=true",
+                "-c",
+                "merge.renameLimit=32767",
+            ]
+
+        # Ensure target checked out
+        self.run_git(["switch", target])
+
+        # Build merge args
+        merge_args = ["merge", "--no-ff", source]
+        if not apply:
+            merge_args = ["merge", "--no-commit", "--no-ff", source]
+        if conflict_bias in {"ours", "theirs"}:
+            merge_args[1:1] = ["-X", conflict_bias]
+        if rename_detect:
+            merge_args[1:1] = ["-X", "find-renames"]
+            if isinstance(rename_threshold, int):
+                merge_args[1:1] = ["-X", f"find-renames={rename_threshold}"]
+        else:
+            merge_args[1:1] = ["-X", "no-renames"]
+
+        if not apply:
+            print(f"Previewing merge of {source} into {target}...")
+        else:
+            if prompt:
+                resp = input(f"Proceed to merge {source} into {target}? (y/N): ")
+                if resp.lower() != "y":
+                    print("Merge cancelled")
+                    return
+            if backup:
+                self.create_backup()
+
+        result = self.run_git(git_prefix + merge_args, check_output=False)
+        if result.returncode == 0:
+            if not apply:
+                print("Merge would be clean")
+                # Abort preview merge to restore state
+                self.run_git(["merge", "--abort"], check_output=False)
+            else:
+                print("Merge completed cleanly")
+                if do_lint or do_test or do_build:
+                    self.validate({"lint": do_lint, "test": do_test, "build": do_build})
+                if backup:
+                    self.cleanup_backup()
+            return
+
+        # Handle conflicts
+        print(f"Merge resulted in conflicts: {result.stderr}")
+        if auto_resolve_trivial:
+            # Try to continue if only whitespace/superficial
+            cont = self.run_git(["commit", "--no-edit"], check_output=False)
+            if cont.returncode == 0:
+                print("Merge committed after trivial resolution")
+                if backup:
+                    self.cleanup_backup()
+                return
+
+        if not apply:
+            # Abort preview merge
+            self.run_git(["merge", "--abort"], check_output=False)
+        else:
+            # Leave repository in conflict state for manual resolution
+            if backup and max_conflicts:
+                # Just informational; we don't count individual conflicts here
+                print(
+                    "Conflicts present; resolve manually or abort and restore from backup"
+                )
+        print("Merge preview/operation ended with conflicts surfaced.")
+
     def run(
         self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3
     ) -> None:

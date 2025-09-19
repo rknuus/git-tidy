@@ -213,6 +213,28 @@ def cmd_smart_rebase(args: argparse.Namespace) -> None:
     git_tidy.smart_rebase(options)
 
 
+def cmd_smart_merge(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    options = {
+        "branch": args.branch,
+        "into": args.into,
+        "apply": args.apply,
+        "prompt": args.prompt,
+        "backup": args.backup,
+        "optimize_merge": args.optimize_merge,
+        "conflict_bias": args.conflict_bias,
+        "rename_detect": args.rename_detect,
+        "rename_threshold": args.rename_threshold,
+        "auto_resolve_trivial": args.auto_resolve_trivial,
+        "max_conflicts": args.max_conflicts,
+        "lint": args.lint,
+        "test": args.test,
+        "build": args.build,
+        "report": args.report,
+    }
+    git_tidy.smart_merge(options)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -710,6 +732,93 @@ Examples:
     sr_parser.set_defaults(skip_merged=True)
 
     sr_parser.set_defaults(func=cmd_smart_rebase)
+
+    # smart-merge
+    sm_parser = subparsers.add_parser(
+        "smart-merge",
+        help="Preview or perform a merge with ort + rename detection and safety",
+        description=(
+            "Safely merge a branch into a target with ort and find-renames, previewing or applying "
+            "with temporary safer merge settings and validation."
+        ),
+    )
+    sm_parser.add_argument("--branch", required=True, help="Source branch to merge")
+    sm_parser.add_argument("--into", help="Target branch (default: current branch)")
+
+    apply_group = sm_parser.add_mutually_exclusive_group()
+    apply_group.add_argument(
+        "--apply",
+        dest="apply",
+        action="store_true",
+        help="Apply the merge; otherwise preview only",
+    )
+    apply_group.add_argument("--no-apply", dest="apply", action="store_false")
+    sm_parser.set_defaults(apply=False)
+
+    prompt_group = sm_parser.add_mutually_exclusive_group()
+    prompt_group.add_argument("--prompt", dest="prompt", action="store_true")
+    prompt_group.add_argument("--no-prompt", dest="prompt", action="store_false")
+    sm_parser.set_defaults(prompt=True)
+
+    backup_group = sm_parser.add_mutually_exclusive_group()
+    backup_group.add_argument("--backup", dest="backup", action="store_true")
+    backup_group.add_argument("--no-backup", dest="backup", action="store_false")
+    sm_parser.set_defaults(backup=True)
+
+    opt_merge_group = sm_parser.add_mutually_exclusive_group()
+    opt_merge_group.add_argument(
+        "--optimize-merge", dest="optimize_merge", action="store_true"
+    )
+    opt_merge_group.add_argument(
+        "--no-optimize-merge", dest="optimize_merge", action="store_false"
+    )
+    sm_parser.set_defaults(optimize_merge=False)
+
+    sm_parser.add_argument(
+        "--conflict-bias", choices=["ours", "theirs", "none"], default="none"
+    )
+
+    rename_group = sm_parser.add_mutually_exclusive_group()
+    rename_group.add_argument(
+        "--rename-detect", dest="rename_detect", action="store_true"
+    )
+    rename_group.add_argument(
+        "--no-rename-detect", dest="rename_detect", action="store_false"
+    )
+    sm_parser.set_defaults(rename_detect=True)
+    sm_parser.add_argument(
+        "--rename-threshold", type=int, help="find-renames threshold percent (0-100)"
+    )
+
+    triv_group = sm_parser.add_mutually_exclusive_group()
+    triv_group.add_argument(
+        "--auto-resolve-trivial", dest="auto_resolve_trivial", action="store_true"
+    )
+    triv_group.add_argument(
+        "--no-auto-resolve-trivial", dest="auto_resolve_trivial", action="store_false"
+    )
+    sm_parser.set_defaults(auto_resolve_trivial=False)
+
+    sm_parser.add_argument("--max-conflicts", type=int)
+
+    lint_group = sm_parser.add_mutually_exclusive_group()
+    lint_group.add_argument("--lint", dest="lint", action="store_true")
+    lint_group.add_argument("--no-lint", dest="lint", action="store_false")
+    sm_parser.set_defaults(lint=False)
+
+    test_group = sm_parser.add_mutually_exclusive_group()
+    test_group.add_argument("--test", dest="test", action="store_true")
+    test_group.add_argument("--no-test", dest="test", action="store_false")
+    sm_parser.set_defaults(test=False)
+
+    build_group = sm_parser.add_mutually_exclusive_group()
+    build_group.add_argument("--build", dest="build", action="store_true")
+    build_group.add_argument("--no-build", dest="build", action="store_false")
+    sm_parser.set_defaults(build=False)
+
+    sm_parser.add_argument("--report", choices=["text", "json"], default="text")
+
+    sm_parser.set_defaults(func=cmd_smart_merge)
 
     return parser
 
