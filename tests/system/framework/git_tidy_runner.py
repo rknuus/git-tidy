@@ -1,11 +1,10 @@
 """Git-tidy command execution wrapper for system tests."""
 
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 
 class ExpectedOutcome(Enum):
@@ -23,7 +22,7 @@ class GitTidyResult:
     """Result of a git-tidy command execution."""
 
     command: str
-    args: List[str]
+    args: list[str]
     exit_code: int
     stdout: str
     stderr: str
@@ -36,7 +35,7 @@ class TestSpec:
     """Specification for a system test."""
 
     command: str
-    args: List[str]
+    args: list[str]
     repository_type: str
     expected_outcome: ExpectedOutcome
     description: str
@@ -50,7 +49,7 @@ class GitTidyRunner:
         self.timeout = timeout
 
     def run_command(
-        self, repo_path: Path, command: str, args: Optional[List[str]] = None
+        self, repo_path: Path, command: str, args: Optional[list[str]] = None
     ) -> GitTidyResult:
         """Execute a git-tidy command and capture results."""
         if args is None:
@@ -109,7 +108,9 @@ class GitTidyRunner:
                 repo_path=repo_path,
             )
 
-    def run_with_dry_run(self, repo_path: Path, command: str, args: List[str]) -> GitTidyResult:
+    def run_with_dry_run(
+        self, repo_path: Path, command: str, args: list[str]
+    ) -> GitTidyResult:
         """Run command with dry-run flag if supported."""
         # Add --dry-run if command supports it
         dry_run_commands = {"group-commits", "split-commits"}
@@ -122,12 +123,19 @@ class GitTidyRunner:
 
         return self.run_command(repo_path, command, dry_run_args)
 
-    def run_and_apply(self, repo_path: Path, command: str, args: List[str]) -> GitTidyResult:
+    def run_and_apply(
+        self, repo_path: Path, command: str, args: list[str]
+    ) -> GitTidyResult:
         """Run command with apply/no-prompt flags for actual execution."""
         # Commands that use --apply
         apply_commands = {"smart-merge", "smart-revert"}
         # Commands that use --no-prompt
-        prompt_commands = {"smart-rebase", "rebase-skip-merged", "group-commits", "split-commits"}
+        prompt_commands = {
+            "smart-rebase",
+            "rebase-skip-merged",
+            "group-commits",
+            "split-commits",
+        }
 
         if command in apply_commands:
             apply_args = args + ["--apply", "--no-prompt"]
@@ -153,6 +161,7 @@ class GitTidyRunner:
             "would revert",
             "would rebase",
             "would group",  # For group-commits
+            "would create",  # For split-commits output like "Would create 2 separate commits"
             "changes to be made",
             "commits to process",
             "group into",  # For group-commits output like "would group into 3 groups"

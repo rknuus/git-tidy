@@ -159,10 +159,11 @@ class TestCLI:
         args.dry_run = False
         args.base = "origin/main"
         args.threshold = 0.5
+        args.no_prompt = False
 
         cmd_group_commits(args)
 
-        mock_run.assert_called_once_with("origin/main", 0.5)
+        mock_run.assert_called_once_with("origin/main", 0.5, no_prompt=False)
 
     @patch.object(GitTidy, "get_commits_to_rebase")
     def test_cmd_split_commits_dry_run(self, mock_get_commits):
@@ -202,10 +203,11 @@ class TestCLI:
         args = Mock()
         args.dry_run = False
         args.base = "origin/main"
+        args.no_prompt = False
 
         cmd_split_commits(args)
 
-        mock_split.assert_called_once_with("origin/main")
+        mock_split.assert_called_once_with("origin/main", no_prompt=False)
 
     @patch.object(GitTidy, "get_commits_to_rebase")
     def test_cmd_split_commits_empty_commits(self, mock_get_commits):

@@ -149,7 +149,7 @@ class TestGitTidyIntegration:
         mock_backup.assert_called_once()
         mock_get_commits.assert_called_once_with("origin/main")
         mock_group.assert_called_once_with(mock_commits, 0.5)
-        mock_rebase.assert_called_once_with(mock_groups)
+        mock_rebase.assert_called_once_with(mock_groups, no_prompt=False)
         mock_cleanup.assert_called_once()
 
     @patch.object(GitTidy, "create_backup")

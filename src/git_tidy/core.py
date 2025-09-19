@@ -111,7 +111,9 @@ class GitTidy:
             # Try to find merge base with main/master for feature branches
             for main_branch in ["main", "master", "origin/main", "origin/master"]:
                 try:
-                    base_ref = self.run_git(["merge-base", "HEAD", main_branch]).stdout.strip()
+                    base_ref = self.run_git(
+                        ["merge-base", "HEAD", main_branch]
+                    ).stdout.strip()
                     # Verify this isn't HEAD itself (which means we're on main)
                     head_sha = self.run_git(["rev-parse", "HEAD"]).stdout.strip()
                     if base_ref != head_sha:
@@ -243,7 +245,9 @@ class GitTidy:
             sample_files = sorted(all_files)[:3]
             return f"Files: {', '.join(sample_files)} and {len(all_files) - 3} more"
 
-    def perform_rebase(self, groups: list[list[CommitInfo]], no_prompt: bool = False) -> bool:
+    def perform_rebase(
+        self, groups: list[list[CommitInfo]], no_prompt: bool = False
+    ) -> bool:
         """Perform the actual rebase operation."""
         if len(groups) <= 1:
             print("No grouping needed - commits are already optimally ordered")
@@ -296,7 +300,9 @@ class GitTidy:
         finally:
             os.unlink(todo_file)
 
-    def perform_split_rebase(self, commits: list[CommitInfo], no_prompt: bool = False) -> bool:
+    def perform_split_rebase(
+        self, commits: list[CommitInfo], no_prompt: bool = False
+    ) -> bool:
         """Perform the actual split rebase operation."""
         # Check if any commits need splitting
         needs_splitting = any(len(commit["files"]) > 1 for commit in commits)
@@ -376,7 +382,9 @@ class GitTidy:
 
         return True
 
-    def split_commits(self, base_ref: Optional[str] = None, no_prompt: bool = False) -> None:
+    def split_commits(
+        self, base_ref: Optional[str] = None, no_prompt: bool = False
+    ) -> None:
         """Split commits into separate commits, one per file."""
         try:
             # Create backup
@@ -1180,7 +1188,10 @@ class GitTidy:
         return [s for s in shas if s]
 
     def run(
-        self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3, no_prompt: bool = False
+        self,
+        base_ref: Optional[str] = None,
+        similarity_threshold: float = 0.3,
+        no_prompt: bool = False,
     ) -> None:
         """Main execution function."""
         try:

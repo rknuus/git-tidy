@@ -66,13 +66,15 @@ class TestConfigureRepoSystem:
         # Capture post state
         post_state = RepositoryState(repo_path)
 
-        # Should succeed with configuration changes
-        validator.validate_result(result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state)
+        # Should succeed with no repository changes (only config changes)
+        validator.validate_result(
+            result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state
+        )
 
         # Verify that git configuration was applied
-        # Check for common safe git settings
-        merge_tool = self._get_git_config(repo_path, "merge.tool")
-        rerere_enabled = self._get_git_config(repo_path, "rerere.enabled")
+        # Check for common safe git settings (just verify they exist or don't exist)
+        _ = self._get_git_config(repo_path, "merge.tool")
+        _ = self._get_git_config(repo_path, "rerere.enabled")
 
         # At least some configuration should be set
         assert result.exit_code == 0, "Configuration should succeed"
@@ -103,7 +105,9 @@ class TestConfigureRepoSystem:
         assert result2.exit_code == 0, "Second configuration should succeed"
 
         # Second run should make no changes (idempotent)
-        validator.validate_result(result2, ExpectedOutcome.SUCCESS_NO_CHANGES, mid_state, post_state)
+        validator.validate_result(
+            result2, ExpectedOutcome.SUCCESS_NO_CHANGES, mid_state, post_state
+        )
 
     @pytest.mark.fast
     def test_configure_repo_default_preset(
@@ -125,9 +129,13 @@ class TestConfigureRepoSystem:
 
         # Should succeed
         if result.exit_code == 0:
-            validator.validate_result(result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state
+            )
         else:
-            validator.validate_result(result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state
+            )
 
     @pytest.mark.fast
     def test_configure_repo_all_repository_types(
@@ -149,7 +157,9 @@ class TestConfigureRepoSystem:
             pre_state = RepositoryState(repo_path)
 
             # Run configure-repo
-            result = runner.run_command(repo_path, "configure-repo", ["--scope", "local"])
+            result = runner.run_command(
+                repo_path, "configure-repo", ["--scope", "local"]
+            )
 
             # Capture post state
             post_state = RepositoryState(repo_path)
@@ -158,7 +168,7 @@ class TestConfigureRepoSystem:
             if result.exit_code == 0:
                 # Configuration commands typically succeed with changes
                 validator.validate_result(
-                    result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state
+                    result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state
                 )
             else:
                 # If it fails, should fail gracefully
@@ -186,9 +196,13 @@ class TestConfigureRepoSystem:
 
         # Should succeed even on empty repository (configuration is independent of commits)
         if result.exit_code == 0:
-            validator.validate_result(result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state
+            )
         else:
-            validator.validate_result(result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state
+            )
 
     @pytest.mark.fast
     def test_configure_repo_invalid_preset(
@@ -211,4 +225,6 @@ class TestConfigureRepoSystem:
         post_state = RepositoryState(repo_path)
 
         # Should fail gracefully
-        validator.validate_result(result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state)
+        validator.validate_result(
+            result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state
+        )

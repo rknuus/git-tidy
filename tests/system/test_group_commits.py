@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_repository_fixtures import TestRepositoryFixtures
 from tests.test_advanced_repository_fixtures import TestAdvancedRepositoryFixtures
+from tests.test_repository_fixtures import TestRepositoryFixtures
 
 from .framework.git_tidy_runner import ExpectedOutcome, GitTidyRunner
 from .framework.result_validator import RepositoryState, ResultValidator
@@ -50,10 +50,14 @@ class TestGroupCommitsSystem:
         post_state = RepositoryState(repo_path)
 
         # Validate preview mode - no changes should be made
-        validator.validate_result(result, ExpectedOutcome.PREVIEW_ONLY, pre_state, post_state)
+        validator.validate_result(
+            result, ExpectedOutcome.PREVIEW_ONLY, pre_state, post_state
+        )
 
         # Should indicate changes would be made
-        assert runner.has_changes_indicated(result), "Expected preview to show changes would be made"
+        assert runner.has_changes_indicated(
+            result
+        ), "Expected preview to show changes would be made"
 
     @pytest.mark.fast
     def test_group_commits_linear_interleaved_apply(
@@ -74,7 +78,9 @@ class TestGroupCommitsSystem:
         post_state = RepositoryState(repo_path)
 
         # Validate successful execution with changes
-        validator.validate_result(result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state)
+        validator.validate_result(
+            result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state
+        )
 
         # Commit count should remain the same (reordering, not adding/removing)
         validator.validate_commit_count_change(pre_state, post_state, 0)
@@ -101,7 +107,9 @@ class TestGroupCommitsSystem:
         post_state = RepositoryState(repo_path)
 
         # Should succeed and make changes (repository was not actually perfectly grouped)
-        validator.validate_result(result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state)
+        validator.validate_result(
+            result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state
+        )
 
         # Backup branch should be cleaned up after successful operation
         validator.validate_backup_created(repo_path, expected=False)
@@ -125,7 +133,9 @@ class TestGroupCommitsSystem:
         post_state = RepositoryState(repo_path)
 
         # Should succeed but make no changes
-        validator.validate_result(result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state)
+        validator.validate_result(
+            result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state
+        )
 
     @pytest.mark.fast
     def test_group_commits_similarity_threshold(
@@ -140,16 +150,22 @@ class TestGroupCommitsSystem:
         pre_state = RepositoryState(repo_path)
 
         # Run group-commits with custom threshold
-        result = runner.run_and_apply(repo_path, "group-commits", ["--threshold", "0.5"])
+        result = runner.run_and_apply(
+            repo_path, "group-commits", ["--threshold", "0.5"]
+        )
 
         # Capture post state
         post_state = RepositoryState(repo_path)
 
         # Should succeed (whether changes are made depends on content)
         if runner.has_changes_indicated(result):
-            validator.validate_result(result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state
+            )
         else:
-            validator.validate_result(result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state
+            )
 
     @pytest.mark.fast
     def test_group_commits_with_base(
@@ -171,9 +187,13 @@ class TestGroupCommitsSystem:
 
         # Should succeed
         if runner.has_changes_indicated(result):
-            validator.validate_result(result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.SUCCESS_WITH_CHANGES, pre_state, post_state
+            )
         else:
-            validator.validate_result(result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state
+            )
 
     @pytest.mark.fast
     def test_group_commits_insufficient_commits(
@@ -195,9 +215,13 @@ class TestGroupCommitsSystem:
 
         # Should either succeed with no changes or fail gracefully
         if result.exit_code == 0:
-            validator.validate_result(result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.SUCCESS_NO_CHANGES, pre_state, post_state
+            )
         else:
-            validator.validate_result(result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state)
+            validator.validate_result(
+                result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state
+            )
 
     @pytest.mark.fast
     def test_group_commits_empty_repository(
@@ -218,4 +242,6 @@ class TestGroupCommitsSystem:
         post_state = RepositoryState(repo_path)
 
         # Should fail gracefully on empty repository
-        validator.validate_result(result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state)
+        validator.validate_result(
+            result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state
+        )

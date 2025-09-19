@@ -241,7 +241,9 @@ class TestGitTidy:
     def test_get_commits_to_rebase_with_main(self, mock_run_git, mock_get_files):
         """Test getting commits to rebase with main branch."""
         mock_run_git.side_effect = [
+            Mock(stdout="feature"),  # branch --show-current (feature branch)
             Mock(stdout="base123"),  # merge-base with main
+            Mock(stdout="head456"),  # rev-parse HEAD (different from base)
             Mock(stdout="abc123|Fix bug 1\ndef456|Fix bug 2"),  # log output
         ]
         mock_get_files.side_effect = [
@@ -282,13 +284,19 @@ class TestGitTidy:
     @patch.object(GitTidy, "get_commit_files")
     @patch.object(GitTidy, "run_git")
     def test_get_commits_to_rebase_fallback_head(self, mock_run_git, mock_get_files):
-        """Test getting commits to rebase falling back to HEAD~10."""
+        """Test getting commits to rebase falling back to HEAD~9."""
 
         def side_effect(cmd, **kwargs):
-            if any(branch in cmd for branch in ["main", "master"]):
+            if cmd == ["branch", "--show-current"]:
+                return Mock(stdout="feature")
+            elif "merge-base" in cmd:
                 raise GitError("No branch found")
-            else:
+            elif cmd == ["rev-list", "--count", "HEAD"]:
+                return Mock(stdout="10")  # 10 commits available
+            elif "log" in cmd:
                 return Mock(stdout="abc123|Fix bug 1")
+            else:
+                raise GitError("Unexpected command")
 
         mock_run_git.side_effect = side_effect
         mock_get_files.return_value = {"file1.py"}
@@ -296,8 +304,8 @@ class TestGitTidy:
         commits = self.git_tidy.get_commits_to_rebase()
 
         assert len(commits) == 1
-        # Should have called with HEAD~10 range
-        expected_range = "HEAD~10..HEAD"
+        # Should have called with HEAD~9 range (10 commits, so HEAD~9)
+        expected_range = "HEAD~9..HEAD"
         mock_run_git.assert_any_call(
             ["log", expected_range, "--pretty=format:%H|%s", "--reverse"]
         )
@@ -306,7 +314,9 @@ class TestGitTidy:
         """Test getting commits when no commits found."""
         with patch.object(self.git_tidy, "run_git") as mock_run_git:
             mock_run_git.side_effect = [
+                Mock(stdout="feature"),  # branch --show-current
                 Mock(stdout="base123"),  # merge-base
+                Mock(stdout="head456"),  # rev-parse HEAD
                 Mock(stdout=""),  # empty log output
             ]
 
@@ -725,7 +735,7 @@ class TestGitTidy:
 
         mock_backup.assert_called_once()
         mock_get_commits.assert_called_once_with("HEAD~5")
-        mock_perform.assert_called_once_with(mock_commits)
+        mock_perform.assert_called_once_with(mock_commits, no_prompt=False)
         mock_cleanup.assert_called_once()
 
     @patch.object(GitTidy, "get_commits_to_rebase")
@@ -763,7 +773,7 @@ class TestGitTidy:
 
         mock_backup.assert_called_once()
         mock_get_commits.assert_called_once_with(None)
-        mock_perform.assert_called_once_with(mock_commits)
+        mock_perform.assert_called_once_with(mock_commits, no_prompt=False)
         mock_restore.assert_called_once()
 
     @patch.object(GitTidy, "get_commits_to_rebase")

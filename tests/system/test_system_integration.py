@@ -66,7 +66,9 @@ class TestSystemIntegration:
         assert pre_state.commit_count == post_state.commit_count
 
     @pytest.mark.fast
-    def test_git_tidy_version_command(self, temp_dir: Path, runner: GitTidyRunner) -> None:
+    def test_git_tidy_version_command(
+        self, temp_dir: Path, runner: GitTidyRunner
+    ) -> None:
         """Test git-tidy version command."""
         # Create any repository for context
         fixtures = TestRepositoryFixtures()
@@ -81,7 +83,9 @@ class TestSystemIntegration:
         assert len(result.stdout.strip()) > 0 or len(result.stderr.strip()) > 0
 
     @pytest.mark.fast
-    def test_git_tidy_help_subcommand(self, temp_dir: Path, runner: GitTidyRunner) -> None:
+    def test_git_tidy_help_subcommand(
+        self, temp_dir: Path, runner: GitTidyRunner
+    ) -> None:
         """Test git-tidy help for specific subcommands."""
         # Create any repository for context
         fixtures = TestRepositoryFixtures()
@@ -140,7 +144,9 @@ class TestSystemIntegration:
         assert pre_state.commit_count == post_state.commit_count
 
         # Validation should work
-        validator.validate_result(result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state)
+        validator.validate_result(
+            result, ExpectedOutcome.ERROR_GRACEFUL, pre_state, post_state
+        )
 
     @pytest.mark.fast
     def test_multiple_repository_types_framework(self, temp_dir: Path) -> None:
@@ -164,4 +170,6 @@ class TestSystemIntegration:
                 assert state.is_empty, f"Repository {repo_name} should be empty"
             else:
                 assert not state.is_empty, f"Repository {repo_name} should not be empty"
-                assert state.commit_count > 0, f"Repository {repo_name} should have commits"
+                assert (
+                    state.commit_count > 0
+                ), f"Repository {repo_name} should have commits"
