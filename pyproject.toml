@@ -7,14 +7,14 @@ name = "git-tidy"
 version = "0.1.0"
 description = "A tool for intelligently reordering git commits by grouping them based on file similarity"
 readme = "README.md"
-license = "MIT"
+license = "GPL-3.0-only"
 authors = [
     {name = "Your Name", email = "your.email@example.com"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
