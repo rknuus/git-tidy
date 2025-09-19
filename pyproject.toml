@@ -98,7 +98,11 @@ addopts = [
     "--strict-config",
     "-ra",
 ]
-markers = []
+markers = [
+    "fast: marks tests as fast (deselect with '-m \"not fast\"')",
+    "slow: marks tests as slow (select with '-m slow')",
+    "conflicts: marks tests related to conflict resolution",
+]
 
 [tool.coverage.run]
 source = ["src"]

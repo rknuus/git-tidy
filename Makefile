@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean lint format typecheck test quality-checks build publish dev-setup
+.PHONY: help install install-dev clean lint format typecheck test quality-checks build publish dev-setup system-tests system-tests-fast system-tests-full system-tests-parallel
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -60,6 +60,25 @@ test-verbose: ## Run tests with verbose output
 test-coverage: ## Run tests with coverage report
 	@echo "$(GREEN)Running tests with coverage...$(RESET)"
 	uv run pytest --cov=git_tidy --cov-report=html --cov-report=term
+
+# System testing targets
+system-tests: system-tests-fast ## Run system tests (default: fast tests only)
+
+system-tests-fast: ## Run fast system tests (core scenarios)
+	@echo "$(GREEN)Running fast system tests...$(RESET)"
+	uv run pytest tests/system/ -m "not slow" -v
+
+system-tests-full: ## Run all system tests (including slow scenarios)
+	@echo "$(GREEN)Running full system tests...$(RESET)"
+	uv run pytest tests/system/ -v
+
+system-tests-parallel: ## Run system tests in parallel
+	@echo "$(GREEN)Running system tests in parallel...$(RESET)"
+	uv run pytest tests/system/ -n auto -v
+
+system-tests-coverage: ## Run system tests with coverage
+	@echo "$(GREEN)Running system tests with coverage...$(RESET)"
+	uv run pytest tests/system/ --cov=git_tidy --cov-report=html --cov-report=term
 
 # Quality check combinations
 quality-checks: lint typecheck format-check ## Run all quality checks (lint, typecheck, format-check)
