@@ -524,7 +524,7 @@ class TestGitTidy:
         ]
 
         with patch("builtins.print") as mock_print:
-            self.git_tidy.rebase_skip_merged(base_ref="origin/main", branch=None, dry_run=True)
+            self.git_tidy.rebase_skip_merged({"base": "origin/main", "branch": None, "dry_run": True})
 
         mock_print.assert_any_call("Found 2 commits unique to feature/B relative to origin/main")
         mock_print.assert_any_call("Would replay (oldest to newest):")
@@ -549,9 +549,116 @@ class TestGitTidy:
         ]
 
         with patch("builtins.print") as mock_print:
-            self.git_tidy.rebase_skip_merged(base_ref="origin/main", branch=None, dry_run=False)
+            # Disable prompt and enable backup
+            self.git_tidy.rebase_skip_merged({
+                "base": "origin/main",
+                "branch": None,
+                "dry_run": False,
+                "prompt": False,
+                "backup": True,
+            })
 
         mock_print.assert_any_call("Rebase-skip-merged completed successfully.")
+
+    @patch.object(GitTidy, "run_git")
+    def test_rebase_skip_merged_optimize_merge_and_bias(self, mock_run_git):
+        """Test that optimize-merge sets -c prefixes and conflict bias adds -X arg."""
+        mock_run_git.side_effect = [
+            Mock(stdout="feature/B"),  # current branch
+            Mock(),  # fetch
+            Mock(stdout="+ abc123 A"),  # cherry
+            Mock(stdout="deadbeefdeadbeef"),  # rev-parse
+            Mock(),  # branch backup
+            Mock(),  # switch -c temp
+            Mock(returncode=0),  # cherry-pick with -X theirs
+            Mock(),  # branch -f
+            Mock(),  # switch branch
+            Mock(),  # branch -D temp
+        ]
+
+        self.git_tidy.rebase_skip_merged({
+            "base": "origin/main",
+            "dry_run": False,
+            "prompt": False,
+            "backup": True,
+            "optimize_merge": True,
+            "conflict_bias": "theirs",
+        })
+
+        # Ensure at least one call included cherry-pick with -X theirs
+        found = False
+        for call in mock_run_git.call_args_list:
+            args = call[0][0]
+            if "cherry-pick" in args and "-X" in args and "theirs" in args:
+                found = True
+                break
+        assert found
+
+    @patch.object(GitTidy, "run_git")
+    def test_rebase_skip_merged_chunk_and_max_conflicts(self, mock_run_git):
+        """Test chunked replay and stopping on max conflicts."""
+        mock_run_git.side_effect = [
+            Mock(stdout="feature/B"),  # current branch
+            Mock(),  # fetch
+            Mock(stdout="+ a1 A\n+ a2 B\n+ a3 C"),  # cherry -> 3 commits
+            Mock(stdout="deadbeefdeadbeef"),  # rev-parse
+            Mock(),  # branch backup
+            Mock(),  # switch -c temp
+            Mock(returncode=1, stderr="conflict"),  # pick a1 -> fail
+            Mock(),  # cherry-pick --abort
+            Mock(),  # switch back
+            Mock(),  # branch -D temp
+        ]
+
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.rebase_skip_merged({
+                "base": "origin/main",
+                "prompt": False,
+                "backup": True,
+                "chunk_size": 1,
+                "max_conflicts": 1,
+            })
+
+        mock_print.assert_any_call("Max conflicts reached; aborting")
+
+    @patch.object(GitTidy, "run_git")
+    def test_rebase_skip_merged_rerere_cache_import_export(self, mock_run_git, tmp_path):
+        """Test rerere cache import/export paths don't crash and attempt copy."""
+        # Prepare a fake rerere cache directory
+        src_cache = tmp_path / "rr"
+        (src_cache / "sub").mkdir(parents=True)
+        f = src_cache / "sub" / "file"
+        f.write_text("data")
+
+        mock_run_git.side_effect = [
+            Mock(stdout="feature/B"),  # current
+            Mock(),  # fetch
+            Mock(stdout=""),  # cherry -> no unique
+        ]
+
+        # Dry run exits early
+        self.git_tidy.rebase_skip_merged({
+            "base": "origin/main",
+            "dry_run": True,
+            "use_rerere_cache": True,
+            "rerere_cache": str(src_cache),
+        })
+
+        # Now run with import/export through the path where there are no commits
+        mock_run_git.side_effect = [
+            Mock(stdout="feature/B"),  # current
+            Mock(),  # fetch
+            Mock(stdout=""),  # cherry -> no unique
+        ]
+        with patch("builtins.print"):
+            self.git_tidy.rebase_skip_merged({
+                "base": "origin/main",
+                "dry_run": False,
+                "prompt": False,
+                "backup": False,
+                "use_rerere_cache": True,
+                "rerere_cache": str(src_cache),
+            })
 
     @patch.object(GitTidy, "run_git")
     def test_configure_repo_dry_run(self, mock_run_git):

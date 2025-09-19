@@ -4,6 +4,7 @@ E.g. reorders commits to group those with similar file changes while preserving 
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -414,30 +415,72 @@ class GitTidy:
         for key, value in settings:
             self.run_git(["config", scope_flag, key, value])
 
-    def rebase_skip_merged(
-        self,
-        base_ref: Optional[str] = None,
-        branch: Optional[str] = None,
-        dry_run: bool = False,
-    ) -> None:
+    def rebase_skip_merged(self, options: dict[str, Any]) -> None:
         """Rebase a branch onto base while skipping commits already on base by content.
 
         Uses `git cherry -v <base> <branch>` to determine which commits are unique (+ lines)
         and replays only those commits in order onto the base. Safe and explicit alternative
         to a regular rebase when ancestor SHAs changed but content landed unchanged.
         """
-        # Determine defaults
-        if base_ref is None:
-            base_ref = "origin/main"
+        base_ref = options.get("base") or "origin/main"
+        branch = options.get("branch") or self.run_git(["branch", "--show-current"]).stdout.strip()
+        dry_run = bool(options.get("dry_run", False))
+        prompt = bool(options.get("prompt", True))
+        backup = bool(options.get("backup", True))
+        conflict_bias = options.get("conflict_bias", "none")
+        chunk_size = options.get("chunk_size")
+        by_groups = bool(options.get("by_groups", False))
+        max_conflicts = options.get("max_conflicts")
+        optimize_merge = bool(options.get("optimize_merge", False))
+        rerere_cache = options.get("rerere_cache")
+        use_rerere_cache = bool(options.get("use_rerere_cache", False))
+        auto_resolve_trivial = bool(options.get("auto_resolve_trivial", False))
+        rename_detect = True if options.get("rename_detect", True) else False
 
-        if branch is None:
-            branch = self.run_git(["branch", "--show-current"]).stdout.strip()
+        # Validations
+        if chunk_size is not None and chunk_size <= 0:
+            print("Invalid --chunk-size: must be > 0")
+            return
+        if max_conflicts is not None and max_conflicts <= 0:
+            print("Invalid --max-conflicts: must be > 0")
+            return
+        if use_rerere_cache and not rerere_cache:
+            print("--use-rerere-cache requires --rerere-cache PATH")
+            return
+        if by_groups:
+            print("Warning: --by-groups not yet supported; proceeding without grouping")
+
+        # Build temporary config prefix if requested
+        git_prefix: list[str] = []
+        if optimize_merge:
+            git_prefix = [
+                "-c",
+                "rerere.enabled=true",
+                "-c",
+                "rerere.autoUpdate=true",
+                "-c",
+                "merge.conflictStyle=zdiff3",
+                "-c",
+                "diff.algorithm=patience",
+                "-c",
+                "diff.indentHeuristic=true",
+                "-c",
+                "diff.renames=true",
+                "-c",
+                "merge.renames=true",
+                "-c",
+                "merge.renameLimit=32767",
+                "-c",
+                "rebase.backend=merge",
+                "-c",
+                "rebase.autoStash=true",
+            ]
 
         # Ensure refs are up to date (best-effort)
-        self.run_git(["fetch", "--all", "--prune"], check_output=False)
+        self.run_git(git_prefix + ["fetch", "--all", "--prune"], check_output=False)
 
         # Compute branch unique commits vs base via git cherry
-        cherry = self.run_git(["cherry", "-v", base_ref, branch])
+        cherry = self.run_git(git_prefix + ["cherry", "-v", base_ref, branch])
         unique_lines = [
             line for line in cherry.stdout.strip().split("\n") if line.startswith("+")
         ]
@@ -462,33 +505,125 @@ class GitTidy:
                 print("No commits to replay; branch is effectively up-to-date with base")
             return
 
+        # Nothing to do
+        if not unique_commits:
+            print("No commits to replay; branch is effectively up-to-date with base")
+            return
+
+        if prompt:
+            resp = input(f"Proceed to rebase {branch} onto {base_ref} replaying {len(unique_commits)} commits? (y/N): ")
+            if resp.lower() != "y":
+                print("Operation cancelled")
+                return
+
         # Create safety backup
-        backup_branch = f"backup-{branch}-rebase-skip-{self.run_git(['rev-parse', 'HEAD']).stdout.strip()[:8]}"
-        self.run_git(["branch", backup_branch, branch])
-        print(f"Created backup branch: {backup_branch}")
+        backup_branch = None
+        if backup:
+            backup_branch = f"backup-{branch}-rebase-skip-{self.run_git(git_prefix + ['rev-parse', 'HEAD']).stdout.strip()[:8]}"
+            self.run_git(git_prefix + ["branch", backup_branch, branch])
+            print(f"Created backup branch: {backup_branch}")
+
+        # Optionally import rerere cache
+        imported_rerere = False
+        rr_cache_dir = os.path.join(".git", "rr-cache")
+        if use_rerere_cache and rerere_cache:
+            try:
+                if os.path.isdir(rerere_cache):
+                    os.makedirs(rr_cache_dir, exist_ok=True)
+                    for root, _dirs, files in os.walk(rerere_cache):
+                        rel = os.path.relpath(root, rerere_cache)
+                        target_root = os.path.join(rr_cache_dir, rel) if rel != "." else rr_cache_dir
+                        os.makedirs(target_root, exist_ok=True)
+                        for fname in files:
+                            src = os.path.join(root, fname)
+                            dst = os.path.join(target_root, fname)
+                            try:
+                                shutil.copy2(src, dst)
+                            except Exception:
+                                pass
+                    imported_rerere = True
+            except Exception:
+                print("Warning: failed to import rerere cache; continuing")
 
         # Create a temp branch from base and replay unique commits
         temp_branch = f"{branch}-rebased"
         # Start from base
-        self.run_git(["switch", "-c", temp_branch, base_ref])
+        self.run_git(git_prefix + ["switch", "-c", temp_branch, base_ref])
+        conflicts_count = 0
+        merge_opts: list[str] = []
+        if conflict_bias in {"ours", "theirs"}:
+            merge_opts += ["-X", conflict_bias]
+        if not rename_detect:
+            merge_opts += ["-X", "no-renames"]
+        else:
+            merge_opts += ["-X", "find-renames"]
+        if auto_resolve_trivial:
+            merge_opts += ["-X", "ignore-space-change"]
 
-        for sha in unique_commits:
-            result = self.run_git(["cherry-pick", sha], check_output=False)
-            if result.returncode != 0:
-                print(f"Cherry-pick failed for {sha[:8]}: {result.stderr}")
-                print("Aborting cherry-pick and restoring original branch...")
-                self.run_git(["cherry-pick", "--abort"], check_output=False)
-                # Restore original branch
+        def replay_range(commits: list[str]) -> bool:
+            nonlocal conflicts_count
+            for sha in commits:
+                result = self.run_git(git_prefix + ["cherry-pick", *merge_opts, sha], check_output=False)
+                if result.returncode != 0:
+                    # Try trivial auto-continue if requested
+                    if auto_resolve_trivial:
+                        diff = self.run_git(["diff", "--name-only", "--diff-filter=U"], check_output=False)
+                        if diff.returncode == 0 and not diff.stdout.strip():
+                            cont = self.run_git(["cherry-pick", "--continue"], check_output=False)
+                            if cont.returncode == 0:
+                                continue
+                    conflicts_count += 1
+                    print(f"Cherry-pick failed for {sha[:8]}: {result.stderr}")
+                    if max_conflicts is not None and conflicts_count >= max_conflicts:
+                        print("Max conflicts reached; aborting")
+                        return False
+                    # Abort this pick and stop
+                    self.run_git(["cherry-pick", "--abort"], check_output=False)
+                    return False
+            return True
+
+        if chunk_size and chunk_size > 0:
+            for i in range(0, len(unique_commits), chunk_size):
+                chunk = unique_commits[i : i + chunk_size]
+                ok = replay_range(chunk)
+                if not ok:
+                    # Restore original branch
+                    self.run_git(["switch", branch], check_output=False)
+                    self.run_git(["branch", "-D", temp_branch], check_output=False)
+                    if backup_branch:
+                        print(f"You can recover previous state from {backup_branch}")
+                    return
+        else:
+            ok = replay_range(unique_commits)
+            if not ok:
                 self.run_git(["switch", branch], check_output=False)
-                # Cleanup temp branch
                 self.run_git(["branch", "-D", temp_branch], check_output=False)
-                print(f"You can recover previous state from {backup_branch}")
+                if backup_branch:
+                    print(f"You can recover previous state from {backup_branch}")
                 return
 
         # Fast-forward branch to the temp branch state
-        self.run_git(["branch", "-f", branch, temp_branch])
-        self.run_git(["switch", branch])
-        self.run_git(["branch", "-D", temp_branch], check_output=False)
+        self.run_git(git_prefix + ["branch", "-f", branch, temp_branch])
+        self.run_git(git_prefix + ["switch", branch])
+        self.run_git(git_prefix + ["branch", "-D", temp_branch], check_output=False)
+
+        # Optionally export rerere cache
+        if use_rerere_cache and rerere_cache and imported_rerere:
+            try:
+                os.makedirs(rerere_cache, exist_ok=True)
+                for root, _dirs, files in os.walk(rr_cache_dir):
+                    rel = os.path.relpath(root, rr_cache_dir)
+                    target_root = os.path.join(rerere_cache, rel) if rel != "." else rerere_cache
+                    os.makedirs(target_root, exist_ok=True)
+                    for fname in files:
+                        src = os.path.join(root, fname)
+                        dst = os.path.join(target_root, fname)
+                        try:
+                            shutil.copy2(src, dst)
+                        except Exception:
+                            pass
+            except Exception:
+                print("Warning: failed to export rerere cache")
         print("Rebase-skip-merged completed successfully.")
 
     def run(

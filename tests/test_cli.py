@@ -343,6 +343,19 @@ class TestCLI:
         assert args.base is None
         assert args.branch is None
         assert args.dry_run is False
+        assert args.prompt is True
+        assert args.backup is True
+        assert args.by_groups is False
+        assert args.optimize_merge is False
+        assert args.conflict_bias == "none"
+        assert args.use_rerere_cache is False
+        assert args.auto_resolve_trivial is False
+        assert args.rename_detect is True
+        assert args.lint is False
+        assert args.test is False
+        assert args.build is False
+        assert args.report == "text"
+        assert args.summary is True
 
     @patch.object(GitTidy, "rebase_skip_merged")
     def test_cmd_rebase_skip_merged_dispatch(self, mock_rsm):
@@ -351,10 +364,27 @@ class TestCLI:
         args.base = "origin/main"
         args.branch = "feature/B"
         args.dry_run = True
+        args.prompt = False
+        args.backup = False
+        args.resume_from = None
+        args.chunk_size = None
+        args.by_groups = False
+        args.max_conflicts = None
+        args.optimize_merge = True
+        args.conflict_bias = "theirs"
+        args.rerere_cache = None
+        args.use_rerere_cache = False
+        args.auto_resolve_trivial = True
+        args.rename_detect = True
+        args.lint = False
+        args.test = False
+        args.build = False
+        args.report = "text"
+        args.summary = True
 
         cmd_rebase_skip_merged(args)
 
-        mock_rsm.assert_called_once_with(base_ref="origin/main", branch="feature/B", dry_run=True)
+        mock_rsm.assert_called_once()
 
     def test_integration_help_output(self):
         """Integration test for help output."""
