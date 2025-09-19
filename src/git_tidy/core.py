@@ -1014,6 +1014,131 @@ class GitTidy:
                 )
         print("Merge preview/operation ended with conflicts surfaced.")
 
+    def smart_revert(self, options: dict[str, Any]) -> None:
+        """Preview or perform revert(s) with strategy hints and safety."""
+        commits: list[str] = options.get("commits") or []
+        range_expr: Optional[str] = options.get("range")
+        count: Optional[int] = options.get("count")
+
+        apply = bool(options.get("apply", False))
+        prompt = bool(options.get("prompt", True))
+        backup = bool(options.get("backup", True))
+        optimize_merge = bool(options.get("optimize_merge", False))
+        conflict_bias = options.get("conflict_bias", "none")
+        rename_detect = True if options.get("rename_detect", True) else False
+        rename_threshold = options.get("rename_threshold")
+        # auto_resolve_trivial currently not used in revert flow
+        max_conflicts = options.get("max_conflicts")
+        do_lint = bool(options.get("lint", False))
+        do_test = bool(options.get("test", False))
+        do_build = bool(options.get("build", False))
+
+        # Resolve commit list if not explicitly provided
+        if not commits:
+            commits = self.select_reverts({"range": range_expr, "count": count})
+        if not commits:
+            print("No commits selected to revert")
+            return
+
+        # Temporary safer settings
+        git_prefix: list[str] = []
+        if optimize_merge:
+            git_prefix = [
+                "-c",
+                "rerere.enabled=true",
+                "-c",
+                "merge.conflictStyle=zdiff3",
+                "-c",
+                "diff.algorithm=patience",
+                "-c",
+                "diff.indentHeuristic=true",
+                "-c",
+                "diff.renames=true",
+                "-c",
+                "merge.renames=true",
+                "-c",
+                "merge.renameLimit=32767",
+            ]
+
+        # Build revert options
+        revert_opts: list[str] = ["revert"]
+        if not apply:
+            revert_opts.append("--no-commit")
+        if conflict_bias in {"ours", "theirs"}:
+            revert_opts += ["-X", conflict_bias]
+        if rename_detect:
+            revert_opts += ["-X", "find-renames"]
+            if isinstance(rename_threshold, int):
+                revert_opts += ["-X", f"find-renames={rename_threshold}"]
+        else:
+            revert_opts += ["-X", "no-renames"]
+
+        # Confirm apply
+        if apply and prompt:
+            resp = input(f"Proceed to revert {len(commits)} commit(s)? (y/N): ")
+            if resp.lower() != "y":
+                print("Revert cancelled")
+                return
+        if apply and backup:
+            self.create_backup()
+
+        # Preview/apply sequentially
+        conflicts = 0
+        for sha in commits:
+            result = self.run_git(git_prefix + revert_opts + [sha], check_output=False)
+            if result.returncode != 0:
+                print(f"Revert failed for {sha[:8]}: {result.stderr}")
+                conflicts += 1
+                if not apply:
+                    # Abort preview revert and stop
+                    self.run_git(["revert", "--abort"], check_output=False)
+                    break
+                if max_conflicts is not None and conflicts >= max_conflicts:
+                    print("Max conflicts reached; stopping further reverts")
+                    break
+                # For apply mode, leave conflict state for manual resolution
+                break
+
+        if not apply:
+            if conflicts == 0:
+                print("Revert would be clean")
+            else:
+                print("Revert preview ended with conflicts surfaced.")
+            return
+
+        # Apply mode: commit if clean
+        if conflicts == 0:
+            commit_res = self.run_git(["commit", "--no-edit"], check_output=False)
+            if commit_res.returncode == 0:
+                print("Revert committed successfully")
+                if do_lint or do_test or do_build:
+                    self.validate({"lint": do_lint, "test": do_test, "build": do_build})
+                if backup:
+                    self.cleanup_backup()
+                return
+
+        print("Revert ended with conflicts; resolve manually or abort and restore.")
+
+    def select_reverts(self, options: dict[str, Any]) -> list[str]:
+        """Helper to select commits to revert using filters."""
+        range_expr: Optional[str] = options.get("range")
+        count: Optional[int] = options.get("count")
+        grep: Optional[str] = options.get("grep")
+        author: Optional[str] = options.get("author")
+
+        args = ["log", "--pretty=%H"]
+        if count:
+            args += [f"-n{count}"]
+        if grep:
+            args += [f"--grep={grep}"]
+        if author:
+            args += [f"--author={author}"]
+        if range_expr:
+            args += [range_expr]
+        shas = self.run_git(args).stdout.strip().splitlines()
+        # Default to empty list if no output
+        return [s for s in shas if s]
+
     def run(
         self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3
     ) -> None:

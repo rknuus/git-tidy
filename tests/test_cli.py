@@ -433,6 +433,8 @@ class TestCLI:
             "checkpoint-restore",
             "smart-rebase",
             "smart-merge",
+            "smart-revert",
+            "select-reverts",
         ]:
             with pytest.raises(SystemExit) as exc_info:
                 parser.parse_args([cmd, "--help"])
@@ -633,3 +635,56 @@ class TestCLIEdgeCases:
         mock_print.assert_any_call("\nCommit ghi789: Empty commit")
         mock_print.assert_any_call("  Files (0): ")
         mock_print.assert_any_call("  Would create 0 separate commits:")
+
+    def test_parse_smart_revert_defaults(self):
+        parser = create_parser()
+        args = parser.parse_args(["smart-revert", "--commits", "a1,b2"])
+        assert args.command == "smart-revert"
+        assert args.apply is False
+        assert args.prompt is True
+        assert args.backup is True
+        assert args.optimize_merge is False
+        assert args.rename_detect is True
+        assert args.conflict_bias == "none"
+
+    @patch.object(GitTidy, "smart_revert")
+    def test_cmd_smart_revert_dispatch(self, mock_rev):
+        args = Mock()
+        args.commits = ["a1,b2", "c3"]
+        args.range = None
+        args.count = None
+        args.apply = True
+        args.prompt = False
+        args.backup = True
+        args.optimize_merge = True
+        args.conflict_bias = "theirs"
+        args.rename_detect = True
+        args.rename_threshold = 80
+        args.auto_resolve_trivial = False
+        args.max_conflicts = 1
+        args.lint = False
+        args.test = False
+        args.build = False
+        args.report = "text"
+
+        from git_tidy.cli import cmd_smart_revert as _cmd_smart_revert
+
+        _cmd_smart_revert(args)
+        mock_rev.assert_called_once()
+
+    def test_parse_select_reverts(self):
+        parser = create_parser()
+        args = parser.parse_args(
+            [
+                "select-reverts",
+                "--range",
+                "main..HEAD",
+                "--count",
+                "5",
+                "--grep",
+                "fix",
+                "--author",
+                "you@example.com",
+            ]
+        )
+        assert args.command == "select-reverts"

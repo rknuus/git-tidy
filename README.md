@@ -36,6 +36,10 @@ git-tidy --help
 git-tidy smart-merge --branch feature/x --into main            # preview (no changes)
 git-tidy smart-merge --branch feature/x --into main --apply    # apply merge
 
+# Preview or apply strategy-assisted reverts
+git-tidy smart-revert --commits abc123                         # preview (no changes)
+git-tidy smart-revert --range main..HEAD --apply               # apply reverts
+
 # Orchestrated, safe rebase with dedup and validation (recommended)
 git-tidy smart-rebase --base origin/main --prompt --optimize-merge
 
@@ -85,14 +89,24 @@ Key options:
 - `--chunk-size N`, `--[no-]auto-resolve-trivial`, `--max-conflicts N`
 - `--[no-]rename-detect`, `--[no-]lint`, `--[no-]test`, `--[no-]build`
 
-#### `rebase-skip-merged`
-Rebases the current (or given) branch onto a base while skipping commits whose content is already on the base (via patch-id equivalence). Great when an ancestor branch was rebased but landed unchanged on main.
+#### `smart-revert`
+Preview or perform revert(s) for one or more commits/ranges with strategy hints and rename detection. Defaults to preview (no changes) unless `--apply` is provided.
+
+Key options:
+- Selection: `--commits SHA[,SHA…]`, `--range A..B`, or `--count N`
+- Execution: `--[no-]apply` (default: no-apply/preview), `--[no-]prompt`, `--[no-]backup`
+- Merge behavior: `--conflict-bias=ours|theirs|none`, `--[no-]rename-detect`, `--rename-threshold N`
+- Extras: `--[no-]optimize-merge`, `--max-conflicts N`, `--[no-]lint`, `--[no-]test`, `--[no-]build`, `--report=text|json`
+
 
 Key options:
 - `--base BASE`, `--branch BRANCH`, `--[no-]dry-run`
 - `--[no-]prompt`, `--[no-]backup`
 - `--[no-]optimize-merge`, `--conflict-bias=ours|theirs|none`
 - `--chunk-size N`, `--max-conflicts N`, `--[no-]auto-resolve-trivial`
+
+#### `rebase-skip-merged`
+Rebases the current (or given) branch onto a base while skipping commits whose content is already on the base (via patch-id equivalence). Great when an ancestor branch was rebased but landed unchanged on main.
 
 #### `configure-repo`
 Applies safe, idempotent git configuration to reduce merge/rebase pain.
@@ -117,6 +131,7 @@ Key options:
 
 ### Advanced/Utility
 - `select-base`, `preflight-check`, `auto-continue`, `auto-resolve-trivial`, `range-diff-report`, `rerere-share`, `checkpoint-create`, `checkpoint-restore` — helper commands used by `smart-rebase` and available for advanced workflows.
+- `select-reverts` — helper to list commit SHAs to revert using filters like `--range`, `--count`, `--grep`, `--author`.
 
 ## How it works
 

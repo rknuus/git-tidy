@@ -879,6 +879,54 @@ class TestGitTidy:
         mock_cleanup.assert_called_once()
 
     @patch.object(GitTidy, "run_git")
+    def test_smart_revert_preview_clean(self, mock_run_git):
+        # select commits, revert --no-commit clean, revert --abort
+        mock_run_git.side_effect = [
+            Mock(stdout="a1\na2"),  # log -> selected SHAs
+            Mock(returncode=0),  # revert a1 --no-commit
+            Mock(returncode=0),  # revert a2 --no-commit
+            Mock(),  # revert --abort
+        ]
+        with patch("builtins.print") as mock_print:
+            self.git_tidy.smart_revert(
+                {
+                    "commits": [],
+                    "range": "main..HEAD",
+                    "count": None,
+                    "apply": False,
+                    "prompt": False,
+                    "backup": False,
+                    "optimize_merge": False,
+                    "rename_detect": True,
+                }
+            )
+        mock_print.assert_any_call("Revert would be clean")
+
+    @patch.object(GitTidy, "run_git")
+    @patch.object(GitTidy, "create_backup")
+    @patch.object(GitTidy, "cleanup_backup")
+    def test_smart_revert_apply_commits(self, mock_cleanup, mock_backup, mock_run_git):
+        # direct commits provided, revert clean then commit
+        mock_run_git.side_effect = [
+            Mock(returncode=0),  # revert a1
+            Mock(returncode=0),  # revert a2
+            Mock(returncode=0),  # commit --no-edit
+        ]
+        with patch("builtins.print"):
+            self.git_tidy.smart_revert(
+                {
+                    "commits": ["a1", "a2"],
+                    "apply": True,
+                    "prompt": False,
+                    "backup": True,
+                    "optimize_merge": True,
+                    "rename_detect": True,
+                }
+            )
+        mock_backup.assert_called_once()
+        mock_cleanup.assert_called_once()
+
+    @patch.object(GitTidy, "run_git")
     @patch.object(GitTidy, "select_base")
     @patch.object(GitTidy, "preflight_check")
     @patch.object(GitTidy, "rebase_skip_merged")

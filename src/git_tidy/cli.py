@@ -235,6 +235,47 @@ def cmd_smart_merge(args: argparse.Namespace) -> None:
     git_tidy.smart_merge(options)
 
 
+def cmd_smart_revert(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    # normalize commits list (support comma-separated and multiple occurrences)
+    commits: list[str] = []
+    if args.commits:
+        for item in args.commits:
+            commits.extend([c for c in item.split(",") if c])
+    options = {
+        "commits": commits,
+        "range": args.range,
+        "count": args.count,
+        "apply": args.apply,
+        "prompt": args.prompt,
+        "backup": args.backup,
+        "optimize_merge": args.optimize_merge,
+        "conflict_bias": args.conflict_bias,
+        "rename_detect": args.rename_detect,
+        "rename_threshold": args.rename_threshold,
+        "auto_resolve_trivial": args.auto_resolve_trivial,
+        "max_conflicts": args.max_conflicts,
+        "lint": args.lint,
+        "test": args.test,
+        "build": args.build,
+        "report": args.report,
+    }
+    git_tidy.smart_revert(options)
+
+
+def cmd_select_reverts(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    options = {
+        "range": args.range,
+        "count": args.count,
+        "grep": args.grep,
+        "author": args.author,
+    }
+    shas = git_tidy.select_reverts(options)
+    for sha in shas:
+        print(sha)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -819,6 +860,101 @@ Examples:
     sm_parser.add_argument("--report", choices=["text", "json"], default="text")
 
     sm_parser.set_defaults(func=cmd_smart_merge)
+
+    # smart-revert
+    svr_parser = subparsers.add_parser(
+        "smart-revert",
+        help="Preview or perform revert(s) with strategy hints and safety",
+        description=(
+            "Safely revert commit(s) or a range with strategy bias and rename detection. "
+            "Defaults to preview; use --apply to perform changes."
+        ),
+    )
+    svr_parser.add_argument(
+        "--commits",
+        action="append",
+        help="Commit SHAs to revert (comma-separated or repeated)",
+    )
+    svr_parser.add_argument("--range", help="Commit range A..B to revert (inclusive)")
+    svr_parser.add_argument("--count", type=int, help="Revert last N commits")
+
+    apply_group = svr_parser.add_mutually_exclusive_group()
+    apply_group.add_argument("--apply", dest="apply", action="store_true")
+    apply_group.add_argument("--no-apply", dest="apply", action="store_false")
+    svr_parser.set_defaults(apply=False)
+
+    prompt_group = svr_parser.add_mutually_exclusive_group()
+    prompt_group.add_argument("--prompt", dest="prompt", action="store_true")
+    prompt_group.add_argument("--no-prompt", dest="prompt", action="store_false")
+    svr_parser.set_defaults(prompt=True)
+
+    backup_group = svr_parser.add_mutually_exclusive_group()
+    backup_group.add_argument("--backup", dest="backup", action="store_true")
+    backup_group.add_argument("--no-backup", dest="backup", action="store_false")
+    svr_parser.set_defaults(backup=True)
+
+    opt_merge_group = svr_parser.add_mutually_exclusive_group()
+    opt_merge_group.add_argument(
+        "--optimize-merge", dest="optimize_merge", action="store_true"
+    )
+    opt_merge_group.add_argument(
+        "--no-optimize-merge", dest="optimize_merge", action="store_false"
+    )
+    svr_parser.set_defaults(optimize_merge=False)
+
+    svr_parser.add_argument(
+        "--conflict-bias", choices=["ours", "theirs", "none"], default="none"
+    )
+
+    rename_group = svr_parser.add_mutually_exclusive_group()
+    rename_group.add_argument(
+        "--rename-detect", dest="rename_detect", action="store_true"
+    )
+    rename_group.add_argument(
+        "--no-rename-detect", dest="rename_detect", action="store_false"
+    )
+    svr_parser.set_defaults(rename_detect=True)
+    svr_parser.add_argument("--rename-threshold", type=int)
+
+    triv_group = svr_parser.add_mutually_exclusive_group()
+    triv_group.add_argument(
+        "--auto-resolve-trivial", dest="auto_resolve_trivial", action="store_true"
+    )
+    triv_group.add_argument(
+        "--no-auto-resolve-trivial", dest="auto_resolve_trivial", action="store_false"
+    )
+    svr_parser.set_defaults(auto_resolve_trivial=False)
+
+    svr_parser.add_argument("--max-conflicts", type=int)
+
+    lint_group = svr_parser.add_mutually_exclusive_group()
+    lint_group.add_argument("--lint", dest="lint", action="store_true")
+    lint_group.add_argument("--no-lint", dest="lint", action="store_false")
+    svr_parser.set_defaults(lint=False)
+
+    test_group = svr_parser.add_mutually_exclusive_group()
+    test_group.add_argument("--test", dest="test", action="store_true")
+    test_group.add_argument("--no-test", dest="test", action="store_false")
+    svr_parser.set_defaults(test=False)
+
+    build_group = svr_parser.add_mutually_exclusive_group()
+    build_group.add_argument("--build", dest="build", action="store_true")
+    build_group.add_argument("--no-build", dest="build", action="store_false")
+    svr_parser.set_defaults(build=False)
+
+    svr_parser.add_argument("--report", choices=["text", "json"], default="text")
+    svr_parser.set_defaults(func=cmd_smart_revert)
+
+    # select-reverts helper
+    selr_parser = subparsers.add_parser(
+        "select-reverts",
+        help="Select commits to revert via filters; prints SHAs",
+    )
+    selr_parser.add_argument("--range", help="Range A..B (e.g., main..HEAD)")
+    selr_parser.add_argument("--count", type=int, help="Last N commits")
+    selr_parser.add_argument("--grep", help="Filter commit messages (regex)")
+    selr_parser.add_argument("--author", help="Filter by author")
+    selr_parser.set_defaults(func=cmd_select_reverts)
 
     return parser
 
