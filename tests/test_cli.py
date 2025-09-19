@@ -5,11 +5,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from git_tidy.cli import (
+    cmd_configure_repo,
     cmd_group_commits,
+    cmd_rebase_skip_merged,
+    cmd_smart_rebase,
     cmd_split_commits,
     cmd_squash_all,
-    cmd_configure_repo,
-    cmd_rebase_skip_merged,
     create_parser,
     main,
 )
@@ -429,10 +430,48 @@ class TestCLI:
             "rerere-share",
             "checkpoint-create",
             "checkpoint-restore",
+            "smart-rebase",
         ]:
             with pytest.raises(SystemExit) as exc_info:
                 parser.parse_args([cmd, "--help"])
             assert exc_info.value.code == 0
+
+    def test_parse_smart_rebase_defaults(self):
+        parser = create_parser()
+        args = parser.parse_args(["smart-rebase"])
+        assert args.command == "smart-rebase"
+        assert args.dry_run is False
+        assert args.prompt is True
+        assert args.backup is True
+        assert args.optimize_merge is False
+        assert args.conflict_bias == "none"
+        assert args.rename_detect is True
+        assert args.summary is True
+        assert args.skip_merged is True
+
+    @patch.object(GitTidy, "smart_rebase")
+    def test_cmd_smart_rebase_dispatch(self, mock_smart):
+        args = Mock()
+        args.branch = "feature/B"
+        args.base = "origin/main"
+        args.prompt = False
+        args.backup = False
+        args.dry_run = True
+        args.optimize_merge = True
+        args.conflict_bias = "theirs"
+        args.chunk_size = 10
+        args.auto_resolve_trivial = True
+        args.max_conflicts = 1
+        args.rename_detect = False
+        args.lint = True
+        args.test = False
+        args.build = False
+        args.report = "text"
+        args.summary = True
+        args.skip_merged = True
+
+        cmd_smart_rebase(args)
+        mock_smart.assert_called_once()
 
     @patch("sys.argv", ["git-tidy"])
     @patch("git_tidy.cli.create_parser")

@@ -189,6 +189,30 @@ def cmd_checkpoint_restore(args: argparse.Namespace) -> None:
     git_tidy.restore_from_backup()
 
 
+def cmd_smart_rebase(args: argparse.Namespace) -> None:
+    git_tidy = GitTidy()
+    options = {
+        "branch": args.branch,
+        "base": args.base,
+        "prompt": args.prompt,
+        "backup": args.backup,
+        "dry_run": args.dry_run,
+        "optimize_merge": args.optimize_merge,
+        "conflict_bias": args.conflict_bias,
+        "chunk_size": args.chunk_size,
+        "auto_resolve_trivial": args.auto_resolve_trivial,
+        "max_conflicts": args.max_conflicts,
+        "rename_detect": args.rename_detect,
+        "lint": args.lint,
+        "test": args.test,
+        "build": args.build,
+        "report": args.report,
+        "summary": args.summary,
+        "skip_merged": args.skip_merged,
+    }
+    git_tidy.smart_rebase(options)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser with subcommands."""
     parser = argparse.ArgumentParser(
@@ -345,72 +369,143 @@ Examples:
     )
     # boolean paired options
     dry_group = rsm_parser.add_mutually_exclusive_group()
-    dry_group.add_argument("--dry-run", dest="dry_run", action="store_true", help="Show planned changes")
+    dry_group.add_argument(
+        "--dry-run", dest="dry_run", action="store_true", help="Show planned changes"
+    )
     dry_group.add_argument("--no-dry-run", dest="dry_run", action="store_false")
     rsm_parser.set_defaults(dry_run=False)
 
     prompt_group = rsm_parser.add_mutually_exclusive_group()
-    prompt_group.add_argument("--prompt", dest="prompt", action="store_true", help="Ask for confirmation before applying")
+    prompt_group.add_argument(
+        "--prompt",
+        dest="prompt",
+        action="store_true",
+        help="Ask for confirmation before applying",
+    )
     prompt_group.add_argument("--no-prompt", dest="prompt", action="store_false")
     rsm_parser.set_defaults(prompt=True)
 
     backup_group = rsm_parser.add_mutually_exclusive_group()
-    backup_group.add_argument("--backup", dest="backup", action="store_true", help="Create a backup branch before changes")
+    backup_group.add_argument(
+        "--backup",
+        dest="backup",
+        action="store_true",
+        help="Create a backup branch before changes",
+    )
     backup_group.add_argument("--no-backup", dest="backup", action="store_false")
     rsm_parser.set_defaults(backup=True)
 
-    rsm_parser.add_argument("--resume-from", help="Resume from this commit (SHA or index)")
-    rsm_parser.add_argument("--chunk-size", type=int, help="Replay commits in chunks of N")
+    rsm_parser.add_argument(
+        "--resume-from", help="Resume from this commit (SHA or index)"
+    )
+    rsm_parser.add_argument(
+        "--chunk-size", type=int, help="Replay commits in chunks of N"
+    )
 
     by_groups_group = rsm_parser.add_mutually_exclusive_group()
-    by_groups_group.add_argument("--by-groups", dest="by_groups", action="store_true", help="Replay commits grouped to reduce conflicts")
-    by_groups_group.add_argument("--no-by-groups", dest="by_groups", action="store_false")
+    by_groups_group.add_argument(
+        "--by-groups",
+        dest="by_groups",
+        action="store_true",
+        help="Replay commits grouped to reduce conflicts",
+    )
+    by_groups_group.add_argument(
+        "--no-by-groups", dest="by_groups", action="store_false"
+    )
     rsm_parser.set_defaults(by_groups=False)
 
-    rsm_parser.add_argument("--max-conflicts", type=int, help="Abort after N conflicts", default=None)
+    rsm_parser.add_argument(
+        "--max-conflicts", type=int, help="Abort after N conflicts", default=None
+    )
 
     opt_merge_group = rsm_parser.add_mutually_exclusive_group()
-    opt_merge_group.add_argument("--optimize-merge", dest="optimize_merge", action="store_true", help="Temporarily enable safer merge settings for this run")
-    opt_merge_group.add_argument("--no-optimize-merge", dest="optimize_merge", action="store_false")
+    opt_merge_group.add_argument(
+        "--optimize-merge",
+        dest="optimize_merge",
+        action="store_true",
+        help="Temporarily enable safer merge settings for this run",
+    )
+    opt_merge_group.add_argument(
+        "--no-optimize-merge", dest="optimize_merge", action="store_false"
+    )
     rsm_parser.set_defaults(optimize_merge=False)
 
-    rsm_parser.add_argument("--conflict-bias", choices=["ours", "theirs", "none"], default="none", help="Bias for conflicts (-X ours/theirs)")
+    rsm_parser.add_argument(
+        "--conflict-bias",
+        choices=["ours", "theirs", "none"],
+        default="none",
+        help="Bias for conflicts (-X ours/theirs)",
+    )
 
     rsm_parser.add_argument("--rerere-cache", help="Path to shared rerere cache")
     use_rerere_group = rsm_parser.add_mutually_exclusive_group()
-    use_rerere_group.add_argument("--use-rerere-cache", dest="use_rerere_cache", action="store_true", help="Import/export rerere cache for this run")
-    use_rerere_group.add_argument("--no-use-rerere-cache", dest="use_rerere_cache", action="store_false")
+    use_rerere_group.add_argument(
+        "--use-rerere-cache",
+        dest="use_rerere_cache",
+        action="store_true",
+        help="Import/export rerere cache for this run",
+    )
+    use_rerere_group.add_argument(
+        "--no-use-rerere-cache", dest="use_rerere_cache", action="store_false"
+    )
     rsm_parser.set_defaults(use_rerere_cache=False)
 
     auto_res_group = rsm_parser.add_mutually_exclusive_group()
-    auto_res_group.add_argument("--auto-resolve-trivial", dest="auto_resolve_trivial", action="store_true", help="Auto-continue trivial conflicts when possible")
-    auto_res_group.add_argument("--no-auto-resolve-trivial", dest="auto_resolve_trivial", action="store_false")
+    auto_res_group.add_argument(
+        "--auto-resolve-trivial",
+        dest="auto_resolve_trivial",
+        action="store_true",
+        help="Auto-continue trivial conflicts when possible",
+    )
+    auto_res_group.add_argument(
+        "--no-auto-resolve-trivial", dest="auto_resolve_trivial", action="store_false"
+    )
     rsm_parser.set_defaults(auto_resolve_trivial=False)
 
     rename_group = rsm_parser.add_mutually_exclusive_group()
-    rename_group.add_argument("--rename-detect", dest="rename_detect", action="store_true", help="Enable rename detection")
-    rename_group.add_argument("--no-rename-detect", dest="rename_detect", action="store_false")
+    rename_group.add_argument(
+        "--rename-detect",
+        dest="rename_detect",
+        action="store_true",
+        help="Enable rename detection",
+    )
+    rename_group.add_argument(
+        "--no-rename-detect", dest="rename_detect", action="store_false"
+    )
     rsm_parser.set_defaults(rename_detect=True)
 
     lint_group = rsm_parser.add_mutually_exclusive_group()
-    lint_group.add_argument("--lint", dest="lint", action="store_true", help="Run lint after rebase")
+    lint_group.add_argument(
+        "--lint", dest="lint", action="store_true", help="Run lint after rebase"
+    )
     lint_group.add_argument("--no-lint", dest="lint", action="store_false")
     rsm_parser.set_defaults(lint=False)
 
     test_group = rsm_parser.add_mutually_exclusive_group()
-    test_group.add_argument("--test", dest="test", action="store_true", help="Run tests after rebase")
+    test_group.add_argument(
+        "--test", dest="test", action="store_true", help="Run tests after rebase"
+    )
     test_group.add_argument("--no-test", dest="test", action="store_false")
     rsm_parser.set_defaults(test=False)
 
     build_group = rsm_parser.add_mutually_exclusive_group()
-    build_group.add_argument("--build", dest="build", action="store_true", help="Run build after rebase")
+    build_group.add_argument(
+        "--build", dest="build", action="store_true", help="Run build after rebase"
+    )
     build_group.add_argument("--no-build", dest="build", action="store_false")
     rsm_parser.set_defaults(build=False)
 
-    rsm_parser.add_argument("--report", choices=["text", "json"], default="text", help="Output report format")
+    rsm_parser.add_argument(
+        "--report",
+        choices=["text", "json"],
+        default="text",
+        help="Output report format",
+    )
 
     summary_group = rsm_parser.add_mutually_exclusive_group()
-    summary_group.add_argument("--summary", dest="summary", action="store_true", help="Print summary at end")
+    summary_group.add_argument(
+        "--summary", dest="summary", action="store_true", help="Print summary at end"
+    )
     summary_group.add_argument("--no-summary", dest="summary", action="store_false")
     rsm_parser.set_defaults(summary=True)
     rsm_parser.set_defaults(func=cmd_rebase_skip_merged)
@@ -424,7 +519,9 @@ Examples:
     pre_parser.add_argument("--branch")
     allow_dirty = pre_parser.add_mutually_exclusive_group()
     allow_dirty.add_argument("--allow-dirty", dest="allow_dirty", action="store_true")
-    allow_dirty.add_argument("--no-allow-dirty", dest="allow_dirty", action="store_false")
+    allow_dirty.add_argument(
+        "--no-allow-dirty", dest="allow_dirty", action="store_false"
+    )
     pre_parser.set_defaults(allow_dirty=False)
     allow_wip = pre_parser.add_mutually_exclusive_group()
     allow_wip.add_argument("--allow-wip", dest="allow_wip", action="store_true")
@@ -441,7 +538,11 @@ Examples:
         "select-base",
         help="Select a sensible rebase base (merge-base or fallback)",
     )
-    sel_parser.add_argument("--preferred", nargs="+", default=["origin/main", "main", "origin/master", "master"])
+    sel_parser.add_argument(
+        "--preferred",
+        nargs="+",
+        default=["origin/main", "main", "origin/master", "master"],
+    )
     sel_parser.add_argument("--fallback", default="HEAD~10")
     sel_parser.set_defaults(func=cmd_select_base)
 
@@ -517,6 +618,98 @@ Examples:
         help="Restore from last git-tidy backup",
     )
     cpr_parser.set_defaults(func=cmd_checkpoint_restore)
+
+    # smart-rebase
+    sr_parser = subparsers.add_parser(
+        "smart-rebase",
+        help="Perform an orchestrated rebase with safety, dedup and validation",
+        description=(
+            "Preflight checks, choose base, rebase while skipping merged content, optionally in chunks, "
+            "with temporary merge optimizations and post-run validation/reporting."
+        ),
+    )
+    sr_parser.add_argument("--branch")
+    sr_parser.add_argument("--base")
+    # paired booleans
+    dry_group = sr_parser.add_mutually_exclusive_group()
+    dry_group.add_argument("--dry-run", dest="dry_run", action="store_true")
+    dry_group.add_argument("--no-dry-run", dest="dry_run", action="store_false")
+    sr_parser.set_defaults(dry_run=False)
+
+    prompt_group = sr_parser.add_mutually_exclusive_group()
+    prompt_group.add_argument("--prompt", dest="prompt", action="store_true")
+    prompt_group.add_argument("--no-prompt", dest="prompt", action="store_false")
+    sr_parser.set_defaults(prompt=True)
+
+    backup_group = sr_parser.add_mutually_exclusive_group()
+    backup_group.add_argument("--backup", dest="backup", action="store_true")
+    backup_group.add_argument("--no-backup", dest="backup", action="store_false")
+    sr_parser.set_defaults(backup=True)
+
+    opt_merge_group = sr_parser.add_mutually_exclusive_group()
+    opt_merge_group.add_argument(
+        "--optimize-merge", dest="optimize_merge", action="store_true"
+    )
+    opt_merge_group.add_argument(
+        "--no-optimize-merge", dest="optimize_merge", action="store_false"
+    )
+    sr_parser.set_defaults(optimize_merge=False)
+
+    sr_parser.add_argument(
+        "--conflict-bias", choices=["ours", "theirs", "none"], default="none"
+    )
+    sr_parser.add_argument("--chunk-size", type=int)
+
+    triv_group = sr_parser.add_mutually_exclusive_group()
+    triv_group.add_argument(
+        "--auto-resolve-trivial", dest="auto_resolve_trivial", action="store_true"
+    )
+    triv_group.add_argument(
+        "--no-auto-resolve-trivial", dest="auto_resolve_trivial", action="store_false"
+    )
+    sr_parser.set_defaults(auto_resolve_trivial=False)
+
+    sr_parser.add_argument("--max-conflicts", type=int)
+
+    rename_group = sr_parser.add_mutually_exclusive_group()
+    rename_group.add_argument(
+        "--rename-detect", dest="rename_detect", action="store_true"
+    )
+    rename_group.add_argument(
+        "--no-rename-detect", dest="rename_detect", action="store_false"
+    )
+    sr_parser.set_defaults(rename_detect=True)
+
+    lint_group = sr_parser.add_mutually_exclusive_group()
+    lint_group.add_argument("--lint", dest="lint", action="store_true")
+    lint_group.add_argument("--no-lint", dest="lint", action="store_false")
+    sr_parser.set_defaults(lint=False)
+
+    test_group = sr_parser.add_mutually_exclusive_group()
+    test_group.add_argument("--test", dest="test", action="store_true")
+    test_group.add_argument("--no-test", dest="test", action="store_false")
+    sr_parser.set_defaults(test=False)
+
+    build_group = sr_parser.add_mutually_exclusive_group()
+    build_group.add_argument("--build", dest="build", action="store_true")
+    build_group.add_argument("--no-build", dest="build", action="store_false")
+    sr_parser.set_defaults(build=False)
+
+    sr_parser.add_argument("--report", choices=["text", "json"], default="text")
+
+    summary_group = sr_parser.add_mutually_exclusive_group()
+    summary_group.add_argument("--summary", dest="summary", action="store_true")
+    summary_group.add_argument("--no-summary", dest="summary", action="store_false")
+    sr_parser.set_defaults(summary=True)
+
+    skipm_group = sr_parser.add_mutually_exclusive_group()
+    skipm_group.add_argument("--skip-merged", dest="skip_merged", action="store_true")
+    skipm_group.add_argument(
+        "--no-skip-merged", dest="skip_merged", action="store_false"
+    )
+    sr_parser.set_defaults(skip_merged=True)
+
+    sr_parser.set_defaults(func=cmd_smart_rebase)
 
     return parser
 

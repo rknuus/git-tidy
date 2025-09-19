@@ -520,13 +520,19 @@ class TestGitTidy:
         mock_run_git.side_effect = [
             Mock(stdout="feature/B"),  # current branch
             Mock(),  # fetch
-            Mock(stdout="+ abc123 Commit A\n- def456 Commit elsewhere\n+ ghi789 Commit B"),  # cherry
+            Mock(
+                stdout="+ abc123 Commit A\n- def456 Commit elsewhere\n+ ghi789 Commit B"
+            ),  # cherry
         ]
 
         with patch("builtins.print") as mock_print:
-            self.git_tidy.rebase_skip_merged({"base": "origin/main", "branch": None, "dry_run": True})
+            self.git_tidy.rebase_skip_merged(
+                {"base": "origin/main", "branch": None, "dry_run": True}
+            )
 
-        mock_print.assert_any_call("Found 2 commits unique to feature/B relative to origin/main")
+        mock_print.assert_any_call(
+            "Found 2 commits unique to feature/B relative to origin/main"
+        )
         mock_print.assert_any_call("Would replay (oldest to newest):")
 
     @patch.object(GitTidy, "run_git")
@@ -550,13 +556,15 @@ class TestGitTidy:
 
         with patch("builtins.print") as mock_print:
             # Disable prompt and enable backup
-            self.git_tidy.rebase_skip_merged({
-                "base": "origin/main",
-                "branch": None,
-                "dry_run": False,
-                "prompt": False,
-                "backup": True,
-            })
+            self.git_tidy.rebase_skip_merged(
+                {
+                    "base": "origin/main",
+                    "branch": None,
+                    "dry_run": False,
+                    "prompt": False,
+                    "backup": True,
+                }
+            )
 
         mock_print.assert_any_call("Rebase-skip-merged completed successfully.")
 
@@ -576,14 +584,16 @@ class TestGitTidy:
             Mock(),  # branch -D temp
         ]
 
-        self.git_tidy.rebase_skip_merged({
-            "base": "origin/main",
-            "dry_run": False,
-            "prompt": False,
-            "backup": True,
-            "optimize_merge": True,
-            "conflict_bias": "theirs",
-        })
+        self.git_tidy.rebase_skip_merged(
+            {
+                "base": "origin/main",
+                "dry_run": False,
+                "prompt": False,
+                "backup": True,
+                "optimize_merge": True,
+                "conflict_bias": "theirs",
+            }
+        )
 
         # Ensure at least one call included cherry-pick with -X theirs
         found = False
@@ -611,18 +621,22 @@ class TestGitTidy:
         ]
 
         with patch("builtins.print") as mock_print:
-            self.git_tidy.rebase_skip_merged({
-                "base": "origin/main",
-                "prompt": False,
-                "backup": True,
-                "chunk_size": 1,
-                "max_conflicts": 1,
-            })
+            self.git_tidy.rebase_skip_merged(
+                {
+                    "base": "origin/main",
+                    "prompt": False,
+                    "backup": True,
+                    "chunk_size": 1,
+                    "max_conflicts": 1,
+                }
+            )
 
         mock_print.assert_any_call("Max conflicts reached; aborting")
 
     @patch.object(GitTidy, "run_git")
-    def test_rebase_skip_merged_rerere_cache_import_export(self, mock_run_git, tmp_path):
+    def test_rebase_skip_merged_rerere_cache_import_export(
+        self, mock_run_git, tmp_path
+    ):
         """Test rerere cache import/export paths don't crash and attempt copy."""
         # Prepare a fake rerere cache directory
         src_cache = tmp_path / "rr"
@@ -637,12 +651,14 @@ class TestGitTidy:
         ]
 
         # Dry run exits early
-        self.git_tidy.rebase_skip_merged({
-            "base": "origin/main",
-            "dry_run": True,
-            "use_rerere_cache": True,
-            "rerere_cache": str(src_cache),
-        })
+        self.git_tidy.rebase_skip_merged(
+            {
+                "base": "origin/main",
+                "dry_run": True,
+                "use_rerere_cache": True,
+                "rerere_cache": str(src_cache),
+            }
+        )
 
         # Now run with import/export through the path where there are no commits
         mock_run_git.side_effect = [
@@ -651,14 +667,16 @@ class TestGitTidy:
             Mock(stdout=""),  # cherry -> no unique
         ]
         with patch("builtins.print"):
-            self.git_tidy.rebase_skip_merged({
-                "base": "origin/main",
-                "dry_run": False,
-                "prompt": False,
-                "backup": False,
-                "use_rerere_cache": True,
-                "rerere_cache": str(src_cache),
-            })
+            self.git_tidy.rebase_skip_merged(
+                {
+                    "base": "origin/main",
+                    "dry_run": False,
+                    "prompt": False,
+                    "backup": False,
+                    "use_rerere_cache": True,
+                    "rerere_cache": str(src_cache),
+                }
+            )
 
     @patch.object(GitTidy, "run_git")
     def test_configure_repo_dry_run(self, mock_run_git):
@@ -775,14 +793,18 @@ class TestGitTidy:
             Mock(stdout="1\t2"),  # ahead/behind
         ]
         with patch("builtins.print") as mock_print:
-            self.git_tidy.preflight_check({"allow_dirty": True, "allow_wip": False, "dry_run": True})
+            self.git_tidy.preflight_check(
+                {"allow_dirty": True, "allow_wip": False, "dry_run": True}
+            )
         mock_print.assert_any_call("Preflight OK. Behind/ahead (base...branch): 1\t2")
 
     @patch.object(GitTidy, "run_git")
     def test_select_base_prefers_first_available(self, mock_run_git):
         # merge-base for first preferred succeeds
         mock_run_git.return_value = Mock(stdout="base123")
-        base = self.git_tidy.select_base({"preferred": ["origin/main", "master"], "fallback": "HEAD~5"})
+        base = self.git_tidy.select_base(
+            {"preferred": ["origin/main", "master"], "fallback": "HEAD~5"}
+        )
         assert base == "origin/main"
 
     @patch.object(GitTidy, "run_git")
@@ -809,3 +831,102 @@ class TestGitTidy:
         with patch("builtins.print") as mock_print:
             self.git_tidy.rerere_share({})
         mock_print.assert_any_call("Missing action or path")
+
+    @patch.object(GitTidy, "run_git")
+    @patch.object(GitTidy, "select_base")
+    @patch.object(GitTidy, "preflight_check")
+    @patch.object(GitTidy, "rebase_skip_merged")
+    @patch.object(GitTidy, "create_backup")
+    @patch.object(GitTidy, "cleanup_backup")
+    def test_smart_rebase_dry_run(
+        self,
+        mock_cleanup,
+        mock_backup,
+        mock_rsm,
+        mock_preflight,
+        mock_select,
+        mock_run_git,
+    ):
+        mock_select.return_value = "origin/main"
+        with patch("builtins.print"):
+            self.git_tidy.smart_rebase(
+                {
+                    "branch": "feature/B",
+                    "base": None,
+                    "dry_run": True,
+                    "prompt": False,
+                    "backup": False,
+                }
+            )
+        mock_preflight.assert_called_once()
+        mock_rsm.assert_not_called()
+        mock_cleanup.assert_not_called()
+        mock_backup.assert_not_called()
+
+    @patch.object(GitTidy, "run_git")
+    @patch.object(GitTidy, "select_base")
+    @patch.object(GitTidy, "preflight_check")
+    @patch.object(GitTidy, "rebase_skip_merged")
+    @patch.object(GitTidy, "create_backup")
+    @patch.object(GitTidy, "cleanup_backup")
+    def test_smart_rebase_flag_combinations(
+        self,
+        mock_cleanup,
+        mock_backup,
+        mock_rsm,
+        mock_preflight,
+        mock_select,
+        mock_run_git,
+    ):
+        mock_select.return_value = "origin/main"
+        mock_run_git.return_value = Mock(returncode=0)
+
+        # Define representative combinations
+        prompt_opts = [True, False]
+        backup_opts = [True, False]
+        optimize_opts = [True, False]
+        bias_opts = ["none", "ours", "theirs"]
+        rename_opts = [True, False]
+        skip_merged_opts = [True, False]
+
+        combos = (
+            (p, b, o, c, r, s)
+            for p in prompt_opts
+            for b in backup_opts
+            for o in optimize_opts
+            for c in bias_opts
+            for r in rename_opts
+            for s in skip_merged_opts
+        )
+
+        for prompt, backup, optimize, bias, rename, skip in combos:
+            mock_preflight.reset_mock()
+            mock_rsm.reset_mock()
+            mock_backup.reset_mock()
+            mock_cleanup.reset_mock()
+
+            self.git_tidy.smart_rebase(
+                {
+                    "branch": "feature/B",
+                    "base": None,
+                    "dry_run": False,
+                    "prompt": prompt,
+                    "backup": backup,
+                    "optimize_merge": optimize,
+                    "conflict_bias": bias,
+                    "rename_detect": rename,
+                    "skip_merged": skip,
+                }
+            )
+
+            # Preflight should always run
+            assert mock_preflight.called
+            if backup:
+                assert mock_backup.called
+                assert mock_cleanup.called
+            else:
+                assert not mock_backup.called
+            # If skip_merged is False, smart_rebase will do a plain git rebase
+            # which we don't mock here; only assert that in the skip=true case we called rebase_skip_merged
+            if skip:
+                assert mock_rsm.called

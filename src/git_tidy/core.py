@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Optional, TypedDict, Any
+from typing import Any, Optional, TypedDict
 
 
 class CommitInfo(TypedDict):
@@ -364,7 +364,6 @@ class GitTidy:
             self.restore_from_backup()
             sys.exit(1)
 
-
     def configure_repo(self, options: dict[str, Any]) -> None:
         """Configure repository/global git settings to reduce merge pain.
 
@@ -382,7 +381,7 @@ class GitTidy:
             dry_run: bool (default: False)
         """
         scope = options.get("scope", "local")
-        preset = options.get("preset", "safe")
+        # preset currently unused; only 'safe' implemented
         dry_run = bool(options.get("dry_run", False))
 
         if scope not in {"local", "global"}:
@@ -423,7 +422,10 @@ class GitTidy:
         to a regular rebase when ancestor SHAs changed but content landed unchanged.
         """
         base_ref = options.get("base") or "origin/main"
-        branch = options.get("branch") or self.run_git(["branch", "--show-current"]).stdout.strip()
+        branch = (
+            options.get("branch")
+            or self.run_git(["branch", "--show-current"]).stdout.strip()
+        )
         dry_run = bool(options.get("dry_run", False))
         prompt = bool(options.get("prompt", True))
         backup = bool(options.get("backup", True))
@@ -502,7 +504,9 @@ class GitTidy:
                 for sha in unique_commits:
                     print(f"  {sha[:8]}")
             else:
-                print("No commits to replay; branch is effectively up-to-date with base")
+                print(
+                    "No commits to replay; branch is effectively up-to-date with base"
+                )
             return
 
         # Nothing to do
@@ -511,7 +515,9 @@ class GitTidy:
             return
 
         if prompt:
-            resp = input(f"Proceed to rebase {branch} onto {base_ref} replaying {len(unique_commits)} commits? (y/N): ")
+            resp = input(
+                f"Proceed to rebase {branch} onto {base_ref} replaying {len(unique_commits)} commits? (y/N): "
+            )
             if resp.lower() != "y":
                 print("Operation cancelled")
                 return
@@ -532,7 +538,11 @@ class GitTidy:
                     os.makedirs(rr_cache_dir, exist_ok=True)
                     for root, _dirs, files in os.walk(rerere_cache):
                         rel = os.path.relpath(root, rerere_cache)
-                        target_root = os.path.join(rr_cache_dir, rel) if rel != "." else rr_cache_dir
+                        target_root = (
+                            os.path.join(rr_cache_dir, rel)
+                            if rel != "."
+                            else rr_cache_dir
+                        )
                         os.makedirs(target_root, exist_ok=True)
                         for fname in files:
                             src = os.path.join(root, fname)
@@ -563,13 +573,20 @@ class GitTidy:
         def replay_range(commits: list[str]) -> bool:
             nonlocal conflicts_count
             for sha in commits:
-                result = self.run_git(git_prefix + ["cherry-pick", *merge_opts, sha], check_output=False)
+                result = self.run_git(
+                    git_prefix + ["cherry-pick", *merge_opts, sha], check_output=False
+                )
                 if result.returncode != 0:
                     # Try trivial auto-continue if requested
                     if auto_resolve_trivial:
-                        diff = self.run_git(["diff", "--name-only", "--diff-filter=U"], check_output=False)
+                        diff = self.run_git(
+                            ["diff", "--name-only", "--diff-filter=U"],
+                            check_output=False,
+                        )
                         if diff.returncode == 0 and not diff.stdout.strip():
-                            cont = self.run_git(["cherry-pick", "--continue"], check_output=False)
+                            cont = self.run_git(
+                                ["cherry-pick", "--continue"], check_output=False
+                            )
                             if cont.returncode == 0:
                                 continue
                     conflicts_count += 1
@@ -613,7 +630,9 @@ class GitTidy:
                 os.makedirs(rerere_cache, exist_ok=True)
                 for root, _dirs, files in os.walk(rr_cache_dir):
                     rel = os.path.relpath(root, rr_cache_dir)
-                    target_root = os.path.join(rerere_cache, rel) if rel != "." else rerere_cache
+                    target_root = (
+                        os.path.join(rerere_cache, rel) if rel != "." else rerere_cache
+                    )
                     os.makedirs(target_root, exist_ok=True)
                     for fname in files:
                         src = os.path.join(root, fname)
@@ -629,7 +648,10 @@ class GitTidy:
     # Helper commands for smart orchestration
     def preflight_check(self, options: dict[str, Any]) -> None:
         base = options.get("base") or "origin/main"
-        branch = options.get("branch") or self.run_git(["branch", "--show-current"]).stdout.strip()
+        branch = (
+            options.get("branch")
+            or self.run_git(["branch", "--show-current"]).stdout.strip()
+        )
         allow_dirty = bool(options.get("allow_dirty", False))
         allow_wip = bool(options.get("allow_wip", False))
         dry_run = bool(options.get("dry_run", False))
@@ -650,13 +672,20 @@ class GitTidy:
             return
 
         # Show behind/ahead relative to base
-        ahead = self.run_git(["rev-list", "--left-right", "--count", f"{base}...{branch}"]).stdout.strip()
+        ahead = self.run_git(
+            ["rev-list", "--left-right", "--count", f"{base}...{branch}"]
+        ).stdout.strip()
         print(f"Preflight OK. Behind/ahead (base...branch): {ahead}")
         if dry_run:
             print("Dry-run: no changes made")
 
     def select_base(self, options: dict[str, Any]) -> str:
-        preferred: list[str] = options.get("preferred") or ["origin/main", "main", "origin/master", "master"]
+        preferred: list[str] = options.get("preferred") or [
+            "origin/main",
+            "main",
+            "origin/master",
+            "master",
+        ]
         fallback: str = options.get("fallback") or "HEAD~10"
         for cand in preferred:
             try:
@@ -683,7 +712,9 @@ class GitTidy:
 
     def auto_resolve_trivial(self) -> None:
         # Attempt to resolve trivial conflicts by ignoring whitespace and continuing
-        diff = self.run_git(["diff", "--name-only", "--diff-filter=U"], check_output=False)
+        diff = self.run_git(
+            ["diff", "--name-only", "--diff-filter=U"], check_output=False
+        )
         if diff.returncode != 0:
             print("No conflict information available")
             return
@@ -705,7 +736,9 @@ class GitTidy:
         if not base or not commits or chunk_size <= 0:
             print("Missing required arguments for chunked-replay")
             return
-        temp = f"chunked-{self.run_git(['rev-parse', '--short', 'HEAD']).stdout.strip()}"
+        temp = (
+            f"chunked-{self.run_git(['rev-parse', '--short', 'HEAD']).stdout.strip()}"
+        )
         self.run_git(["switch", "-c", temp, base])
         for i in range(0, len(commits), chunk_size):
             chunk = commits[i : i + chunk_size]
@@ -731,7 +764,7 @@ class GitTidy:
             print("Nothing to validate")
             return
         if do_lint:
-            res = self.run_git(["rev-parse", "HEAD"], check_output=False)
+            self.run_git(["rev-parse", "HEAD"], check_output=False)
             print("Lint placeholder; hook your linter here")
         if do_test:
             print("Test placeholder; hook your test runner here")
@@ -752,7 +785,9 @@ class GitTidy:
             os.makedirs(rr_cache_dir, exist_ok=True)
             for root, _dirs, files in os.walk(path):
                 rel = os.path.relpath(root, path)
-                target_root = os.path.join(rr_cache_dir, rel) if rel != "." else rr_cache_dir
+                target_root = (
+                    os.path.join(rr_cache_dir, rel) if rel != "." else rr_cache_dir
+                )
                 os.makedirs(target_root, exist_ok=True)
                 for fname in files:
                     src = os.path.join(root, fname)
@@ -779,6 +814,93 @@ class GitTidy:
                     except Exception:
                         pass
             print("Exported rerere cache")
+
+    def smart_rebase(self, options: dict[str, Any]) -> None:
+        """Orchestrated rebase flow combining preflight, dedup-aware replay, and validation."""
+        branch = (
+            options.get("branch")
+            or self.run_git(["branch", "--show-current"]).stdout.strip()
+        )
+        base = options.get("base") or self.select_base({})
+        dry_run = bool(options.get("dry_run", False))
+        prompt = bool(options.get("prompt", True))
+        backup = bool(options.get("backup", True))
+        optimize_merge = bool(options.get("optimize_merge", False))
+        conflict_bias = options.get("conflict_bias", "none")
+        chunk_size = options.get("chunk_size")
+        auto_resolve_trivial = bool(options.get("auto_resolve_trivial", False))
+        max_conflicts = options.get("max_conflicts")
+        rename_detect = True if options.get("rename_detect", True) else False
+        do_lint = bool(options.get("lint", False))
+        do_test = bool(options.get("test", False))
+        do_build = bool(options.get("build", False))
+        # 'report' reserved for future detailed reporting formats
+        summary = bool(options.get("summary", True))
+        skip_merged = bool(options.get("skip_merged", True))
+
+        # Preflight
+        self.preflight_check(
+            {
+                "base": base,
+                "branch": branch,
+                "allow_dirty": False,
+                "allow_wip": False,
+                "dry_run": dry_run,
+            }
+        )
+        if dry_run:
+            print(f"Would rebase {branch} onto {base} (smart mode)")
+            return
+
+        # Backup
+        if backup:
+            self.create_backup()
+
+        # Rebase
+        try:
+            if skip_merged:
+                self.rebase_skip_merged(
+                    {
+                        "base": base,
+                        "branch": branch,
+                        "prompt": prompt,
+                        "backup": False,  # we already backed up
+                        "dry_run": False,
+                        "optimize_merge": optimize_merge,
+                        "conflict_bias": conflict_bias,
+                        "chunk_size": chunk_size,
+                        "auto_resolve_trivial": auto_resolve_trivial,
+                        "max_conflicts": max_conflicts,
+                        "rename_detect": rename_detect,
+                    }
+                )
+            else:
+                # fallback to a plain rebase with optional conflict bias
+                args = ["rebase", base]
+                if conflict_bias in {"ours", "theirs"}:
+                    args = ["rebase", "-X", conflict_bias, base]
+                result = self.run_git(args, check_output=False)
+                if result.returncode != 0:
+                    print(f"Rebase failed: {result.stderr}")
+                    raise GitError("rebase failed")
+
+            # Validation
+            if any([do_lint, do_test, do_build]):
+                self.validate({"lint": do_lint, "test": do_test, "build": do_build})
+
+            if summary:
+                # Print a brief range-diff summary for visibility
+                base_range = f"{base}...{branch}"
+                head_range = f"{base}...{branch}"
+                self.range_diff_report(base_range, head_range)
+
+            if backup:
+                self.cleanup_backup()
+        except Exception as e:
+            print(f"Error during smart-rebase: {e}")
+            if backup:
+                self.restore_from_backup()
+            raise
 
     def run(
         self, base_ref: Optional[str] = None, similarity_threshold: float = 0.3

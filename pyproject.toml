@@ -98,6 +98,7 @@ addopts = [
     "--strict-config",
     "-ra",
 ]
+markers = []
 
 [tool.coverage.run]
 source = ["src"]
