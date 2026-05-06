@@ -17,7 +17,8 @@ from .framework.result_validator import RepositoryState, ResultValidator
 
 # Filenames in the multi-file commit. Mirrors the user's reproducer (12 files,
 # mixed extensions). Sorted alphabetically because ``perform_split_rebase``
-# emits ``split off <file>`` commits in sorted order.
+# emits per-file commits in sorted order with subjects of the form
+# ``<original subject> (split off <file>)``.
 _MULTI_FILE_NAMES: list[str] = [
     "a.h",
     "b.h",
@@ -286,10 +287,11 @@ class TestSplitCommitsSystem:
 
         Expected (after the fix in task 2):
           * Total commits = base + 12 (split off files) + 3 (single-file as-is) = 16
-          * Multi-file commit becomes 12 ``split off <file>`` commits, in
-            alphabetical order, oldest first.
+          * Multi-file commit becomes 12 per-file commits whose subjects are
+            ``<original subject> (split off <file>)``, in alphabetical order,
+            oldest first.
           * Single-file commits keep their original messages verbatim
-            (no ``split off`` prefix).
+            (no ``(split off <file>)`` suffix).
 
         On the CURRENT (broken) implementation the run fails with
         ``error: Your local changes to the following files would be
@@ -325,13 +327,19 @@ class TestSplitCommitsSystem:
 
         # Expected commit messages, oldest-first:
         #   Base: initial
-        #   split off a.h  ... split off l.cpp     (alphabetical)
+        #   M: introduce 12 files at once (split off a.h)
+        #   ... (alphabetical) ...
+        #   M: introduce 12 files at once (split off l.cpp)
         #   S1: tweak m.cpp
         #   S2: tweak n.py
         #   S3: tweak o.h
+        multi_file_subject = "M: introduce 12 files at once"
         expected_first_lines = (
             ["Base: initial"]
-            + [f"split off {name}" for name in sorted(_MULTI_FILE_NAMES)]
+            + [
+                f"{multi_file_subject} (split off {name})"
+                for name in sorted(_MULTI_FILE_NAMES)
+            ]
             + [message for _, message in _SINGLE_FILE_COMMITS]
         )
         validator.validate_commit_messages_match(

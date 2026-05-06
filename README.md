@@ -180,7 +180,7 @@ git-tidy split-commits --dry-run
 #### `split-commits`
 **Scenario**: You have commits that change multiple unrelated files, making them hard to review, cherry-pick, or revert selectively.
 
-**Effect**: Breaks down each multi-file commit into separate commits, one per file, preserving the original commit message but making changes more granular.
+**Effect**: Breaks down each multi-file commit into separate commits, one per file. Each per-file commit preserves the original commit message and extends the subject line with `(split off <file>)`, so conventional-commit prefixes (e.g. `feat:`, `fix:`) and trailers stay intact.
 
 **Example scenarios**:
 - Preparing commits for easier code review

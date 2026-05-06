@@ -373,6 +373,30 @@ class GitTidy:
 
         return True
 
+    @staticmethod
+    def _format_split_message(original_message: str, file: str) -> str:
+        """Return the per-file commit message for a split-off file.
+
+        The original commit's subject (text before the first ``\n``) is
+        extended with ``(split off <file>)`` so conventional-commit prefixes
+        survive in the position git tooling, GitHub, and reviewers actually
+        look. The body (everything after the first ``\n``) is preserved
+        byte-identical to the original commit's body, including blank lines
+        and trailers.
+
+        Edge cases:
+          * Single-line message (no ``\n``): only the new subject is
+            returned, with no spurious trailing newline.
+          * Trailing-newline-only message (``"feat: X\n"``): the empty rest
+            after the partition is preserved as an empty body, yielding
+            ``"feat: X (split off <file>)\n"``.
+        """
+        subject, sep, rest = original_message.partition("\n")
+        new_subject = f"{subject} (split off {file})"
+        if sep:
+            return f"{new_subject}\n{rest}"
+        return new_subject
+
     def _emit_per_file_commits(
         self,
         sha: str,
@@ -398,7 +422,7 @@ class GitTidy:
             self.run_git(["reset", "HEAD"])
             self.run_git(["add", file])
 
-            split_message = f"split off {file}\n\n{original_message}"
+            split_message = self._format_split_message(original_message, file)
 
             if index < last_index:
                 # Stash the rest of the commit's changes so they don't get

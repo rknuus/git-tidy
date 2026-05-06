@@ -1295,6 +1295,73 @@ def test_split_commits_single_file_only_range(
     assert _list_backup_branches(repo_path) == []
 
 
+# ---------------------------------------------------------------------------
+# Unit tests for ``GitTidy._format_split_message``.
+#
+# These lock in the per-file commit message format produced by
+# ``_emit_per_file_commits`` so the format change cannot regress silently.
+# The helper is a pure string function, cheap to test in isolation.
+# ---------------------------------------------------------------------------
+
+
+def test_format_split_message_single_line_subject() -> None:
+    """A subject-only message gets ``(split off <file>)`` appended."""
+    result = GitTidy._format_split_message("feat: X", "a.py")
+    assert result == "feat: X (split off a.py)"
+
+
+def test_format_split_message_subject_and_body() -> None:
+    """The body is preserved verbatim under the extended subject."""
+    original = "feat: X\n\nLong body here."
+    result = GitTidy._format_split_message(original, "a.py")
+    assert result == "feat: X (split off a.py)\n\nLong body here."
+
+
+def test_format_split_message_preserves_trailers() -> None:
+    """Body, blank lines, and trailers must be byte-identical to the input."""
+    original = (
+        "feat: X\n"
+        "\n"
+        "Implements RFC 8259 string escaping. Closes #142.\n"
+        "\n"
+        "Signed-off-by: Alice <alice@example.com>"
+    )
+    result = GitTidy._format_split_message(original, "serializer.py")
+
+    expected = (
+        "feat: X (split off serializer.py)\n"
+        "\n"
+        "Implements RFC 8259 string escaping. Closes #142.\n"
+        "\n"
+        "Signed-off-by: Alice <alice@example.com>"
+    )
+    assert result == expected
+
+
+def test_format_split_message_subject_with_parens() -> None:
+    """Conventional-commit scope syntax is preserved at the start of the subject."""
+    result = GitTidy._format_split_message("feat(api): X", "a.py")
+    assert result == "feat(api): X (split off a.py)"
+
+
+def test_format_split_message_trailing_newline_only() -> None:
+    """A message ending in a newline yields a subject + empty body (newline preserved).
+
+    ``str.partition('\\n')`` returns ``('feat: X', '\\n', '')`` for input
+    ``"feat: X\\n"``. The non-empty separator means we take the
+    ``f"{new_subject}\\n{rest}"`` branch with ``rest == ''``, producing
+    ``"feat: X (split off a.py)\\n"``.
+    """
+    result = GitTidy._format_split_message("feat: X\n", "a.py")
+    assert result == "feat: X (split off a.py)\n"
+
+
+def test_format_split_message_filename_with_special_chars() -> None:
+    """File names are passed through verbatim — git accepts arbitrary subjects."""
+    result = GitTidy._format_split_message("fix: bug", "src/sub dir/file (copy).py")
+    assert result == "fix: bug (split off src/sub dir/file (copy).py)"
+
+
 # Suppress an unused-import complaint if pygit2 is not otherwise referenced
 # in this module. ``RepositoryBuilder`` already uses pygit2, but the import
 # above guarantees a clean failure mode if the dev dependency is missing.
