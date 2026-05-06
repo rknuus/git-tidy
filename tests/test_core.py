@@ -1,11 +1,16 @@
 """Tests for git-tidy core functionality."""
 
 import subprocess
+from pathlib import Path
+from typing import Any, Optional
 from unittest.mock import Mock, patch
 
+import pygit2
 import pytest
 
 from git_tidy.core import GitError, GitTidy
+
+from .test_repository_fixtures import RepositoryBuilder
 
 
 def test_calculate_similarity():
@@ -1099,9 +1104,7 @@ def _list_backup_branches(repo_path: Path) -> list[str]:
     )
     # ``git branch --list`` prefixes with two spaces (or ``* `` for current).
     return [
-        line.lstrip("* ").strip()
-        for line in result.stdout.splitlines()
-        if line.strip()
+        line.lstrip("* ").strip() for line in result.stdout.splitlines() if line.strip()
     ]
 
 
@@ -1208,9 +1211,9 @@ def test_split_commits_failure_rollback(
     # The restore path also resets to ``original_head``; the on-disk tree
     # must therefore still contain the multi-file commit's files.
     for filename in ("x.py", "y.py", "z.py"):
-        assert (repo_path / filename).is_file(), (
-            f"expected {filename} to be restored after failure rollback"
-        )
+        assert (
+            repo_path / filename
+        ).is_file(), f"expected {filename} to be restored after failure rollback"
 
 
 def test_split_commits_empty_range(
@@ -1275,18 +1278,18 @@ def test_split_commits_single_file_only_range(
     git_tidy.split_commits(base_ref=base_sha, no_prompt=True)
 
     new_subjects = _commit_subjects(repo_path, base_sha)
-    assert new_subjects == original_subjects, (
-        f"single-file commits should be preserved verbatim, got {new_subjects!r}"
-    )
+    assert (
+        new_subjects == original_subjects
+    ), f"single-file commits should be preserved verbatim, got {new_subjects!r}"
 
     new_messages = _commit_messages(repo_path, base_sha)
-    assert len(new_messages) == 3, (
-        f"expected exactly 3 commits (not 6), got {len(new_messages)}: {new_messages!r}"
-    )
+    assert (
+        len(new_messages) == 3
+    ), f"expected exactly 3 commits (not 6), got {len(new_messages)}: {new_messages!r}"
     for message in new_messages:
-        assert not message.startswith("split off "), (
-            f"single-file commit got an unexpected 'split off' prefix: {message!r}"
-        )
+        assert not message.startswith(
+            "split off "
+        ), f"single-file commit got an unexpected 'split off' prefix: {message!r}"
 
     # Successful split removes the backup branch on the way out.
     assert _list_backup_branches(repo_path) == []
