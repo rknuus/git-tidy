@@ -278,3 +278,43 @@ class ResultValidator:
                 f"but got {actual_change} "
                 f"(from {pre_state.commit_count} to {post_state.commit_count})"
             )
+
+    def validate_commit_count(
+        self, state: RepositoryState, expected_count: int
+    ) -> None:
+        """Validate that the repository has exactly the expected commit count."""
+        if state.commit_count != expected_count:
+            raise ValidationError(
+                f"Expected commit count of {expected_count}, "
+                f"but got {state.commit_count}"
+            )
+
+    def validate_commit_messages_match(
+        self,
+        state: RepositoryState,
+        expected_first_lines: list[str],
+        order: str = "newest_first",
+    ) -> None:
+        """Validate that commit message first lines match expected list.
+
+        Args:
+            state: Repository state to inspect.
+            expected_first_lines: First-line strings in the order specified.
+            order: Either "newest_first" (default, matching ``git log``) or
+                "oldest_first".
+        """
+        if order not in {"newest_first", "oldest_first"}:
+            raise ValidationError(f"Unknown order: {order}")
+
+        actual_first_lines = [
+            entry["message"].split("\n", 1)[0] for entry in state.commit_history
+        ]
+        if order == "oldest_first":
+            actual_first_lines = list(reversed(actual_first_lines))
+
+        if actual_first_lines[: len(expected_first_lines)] != expected_first_lines:
+            raise ValidationError(
+                "Commit message first-lines do not match.\n"
+                f"  expected ({order}): {expected_first_lines}\n"
+                f"  actual   ({order}): {actual_first_lines[: len(expected_first_lines)]}"
+            )
