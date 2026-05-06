@@ -165,6 +165,7 @@ class GitTidyRunner:
             "changes to be made",
             "commits to process",
             "group into",  # For group-commits output like "would group into 3 groups"
+            "successfully created",  # For split-commits apply output
         ]
 
         output_text = (result.stdout + result.stderr).lower()

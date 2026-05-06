@@ -469,19 +469,19 @@ class TestGitTidy:
         ]
         mock_run_git.side_effect = [
             Mock(stdout="base123"),  # rev-parse for base commit
-            Mock(),  # reset --soft
-            Mock(),  # cherry-pick --no-commit
-            Mock(),  # reset HEAD
+            Mock(),  # reset --hard base
+            # Multi-file commit abc123 -> peel file1.py then file2.py
+            Mock(),  # cherry-pick --no-commit abc123
+            Mock(),  # reset HEAD (peel file1.py, not last)
             Mock(),  # add file1.py
+            Mock(),  # stash push --keep-index --include-untracked
             Mock(),  # commit file1.py
-            Mock(),  # cherry-pick --no-commit
-            Mock(),  # reset HEAD
+            Mock(returncode=0),  # stash pop (check_output=False)
+            Mock(),  # reset HEAD (peel file2.py, last)
             Mock(),  # add file2.py
             Mock(),  # commit file2.py
-            Mock(),  # cherry-pick --no-commit
-            Mock(),  # reset HEAD
-            Mock(),  # add file3.py
-            Mock(),  # commit file3.py
+            # Single-file commit def456 -> plain cherry-pick
+            Mock(),  # cherry-pick def456
         ]
 
         with patch("builtins.print") as mock_print:
@@ -491,9 +491,11 @@ class TestGitTidy:
         mock_input.assert_called_once_with("\nProceed with split rebase? (y/N): ")
 
         # Verify git operations were called
-        assert mock_run_git.call_count == 14  # All expected calls
+        assert mock_run_git.call_count == 12  # All expected calls
         mock_run_git.assert_any_call(["rev-parse", "abc123^"])
-        mock_run_git.assert_any_call(["reset", "--soft", "base123"])
+        mock_run_git.assert_any_call(["reset", "--hard", "base123"])
+        mock_run_git.assert_any_call(["cherry-pick", "--no-commit", "abc123"])
+        mock_run_git.assert_any_call(["cherry-pick", "def456"])
 
         # Verify print statements
         mock_print.assert_any_call("Splitting 2 commits into 3 file-based commits...")
@@ -1034,3 +1036,263 @@ class TestGitTidy:
             # which we don't mock here; only assert that in the skip=true case we called rebase_skip_merged
             if skip:
                 assert mock_rsm.called
+
+
+# ---------------------------------------------------------------------------
+# Edge-case tests for ``GitTidy.split_commits`` against real fixture repos.
+#
+# These complement the system test in ``tests/system/test_split_commits.py``
+# by covering surfaces that are awkward to express as a system run:
+#
+#   * failure rollback mid-split (injected via monkeypatch)
+#   * empty commit range (``--base`` == HEAD)
+#   * single-file-only range (no ``split off`` prefix should be applied)
+#
+# Fixtures are built with :class:`RepositoryBuilder` from
+# ``tests.test_repository_fixtures`` for deterministic author/committer
+# signatures and pinned commit content.
+# ---------------------------------------------------------------------------
+
+
+def _build_three_single_file_repo(base_path: Path) -> tuple[Path, str]:
+    """Build a repo with three commits each touching exactly one (different) file.
+
+    Returns the repo path and the SHA of the base (initial) commit, intended
+    to be passed as ``--base`` to ``split-commits``.
+    """
+    repo_path = base_path / "repo_three_single_file"
+    builder = RepositoryBuilder(repo_path)
+
+    base_oid = builder.add_and_commit({"base.txt": "base\n"}, "Base: initial")
+    builder.add_and_commit({"alpha.py": "# alpha\n"}, "S1: add alpha")
+    builder.add_and_commit({"beta.py": "# beta\n"}, "S2: add beta")
+    builder.add_and_commit({"gamma.py": "# gamma\n"}, "S3: add gamma")
+
+    return repo_path, str(base_oid)
+
+
+def _build_two_multi_file_repo(base_path: Path) -> tuple[Path, str]:
+    """Build a repo with one base commit and one multi-file commit on top.
+
+    Returns the repo path and the SHA of the base commit.
+    """
+    repo_path = base_path / "repo_two_multi_file"
+    builder = RepositoryBuilder(repo_path)
+
+    base_oid = builder.add_and_commit({"base.txt": "base\n"}, "Base: initial")
+    builder.add_and_commit(
+        {"x.py": "# x\n", "y.py": "# y\n", "z.py": "# z\n"},
+        "M: add three files in one commit",
+    )
+
+    return repo_path, str(base_oid)
+
+
+def _list_backup_branches(repo_path: Path) -> list[str]:
+    """Return ``backup-*`` branches in the given repo via ``git branch --list``."""
+    result = subprocess.run(
+        ["git", "branch", "--list", "backup-*"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=str(repo_path),
+    )
+    # ``git branch --list`` prefixes with two spaces (or ``* `` for current).
+    return [
+        line.lstrip("* ").strip()
+        for line in result.stdout.splitlines()
+        if line.strip()
+    ]
+
+
+def _current_head_sha(repo_path: Path) -> str:
+    """Return the SHA of HEAD in ``repo_path``."""
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=str(repo_path),
+    )
+    return result.stdout.strip()
+
+
+def _commit_subjects(repo_path: Path, base_sha: str) -> list[str]:
+    """Return the subjects of commits in ``base_sha..HEAD`` (oldest first)."""
+    result = subprocess.run(
+        ["git", "log", f"{base_sha}..HEAD", "--pretty=format:%s", "--reverse"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=str(repo_path),
+    )
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def _commit_messages(repo_path: Path, base_sha: str) -> list[str]:
+    """Return full commit messages in ``base_sha..HEAD`` (oldest first).
+
+    Uses NUL byte separators so messages with embedded blank lines are parsed
+    unambiguously.
+    """
+    result = subprocess.run(
+        ["git", "log", f"{base_sha}..HEAD", "--pretty=format:%B%x00", "--reverse"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=str(repo_path),
+    )
+    # Split on NUL; strip the trailing newline git adds before each NUL.
+    return [chunk.strip("\n") for chunk in result.stdout.split("\x00") if chunk.strip()]
+
+
+@pytest.fixture
+def split_tmp_dir(tmp_path: Path) -> Path:
+    """Pytest-managed temporary directory dedicated to fixture repos."""
+    return tmp_path
+
+
+def test_split_commits_failure_rollback(
+    split_tmp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mid-split failure must roll HEAD back to its original SHA.
+
+    Strategy: build a real repo with one multi-file commit, then monkeypatch
+    ``GitTidy.run_git`` so that the first ``cherry-pick`` invocation raises a
+    :class:`GitError`. The wrapper in ``GitTidy.split_commits`` must catch the
+    exception, restore HEAD via the backup branch, and call ``sys.exit(1)``.
+
+    This documents the externally observable rollback contract from the user's
+    perspective: HEAD is what it was before the command ran.
+
+    Note on the backup branch: the project's current ``restore_from_backup``
+    deletes the backup branch after restoring HEAD (see ``core.py:77``). The
+    initiative spec aspirationally describes the backup as "preserved on
+    failure", but the in-tree implementation removes it. The assertions below
+    only cover the HEAD restoration, which is the contract that matters for
+    not-losing-work; the backup-branch lifecycle discrepancy is documented in
+    task 3's progress notes rather than enforced here.
+    """
+    repo_path, base_sha = _build_two_multi_file_repo(split_tmp_dir)
+    original_head = _current_head_sha(repo_path)
+    assert original_head != base_sha  # sanity: there's something to split
+
+    monkeypatch.chdir(repo_path)
+
+    git_tidy = GitTidy()
+    real_run_git = git_tidy.run_git
+
+    def failing_run_git(
+        cmd: list[str],
+        check_output: bool = True,
+        env: Optional[dict[str, str]] = None,
+    ) -> subprocess.CompletedProcess[str]:
+        # Inject a deterministic failure on the first cherry-pick attempt.
+        # Earlier sub-calls (rev-parse, branch creation, status, reset --hard)
+        # are allowed through so the backup branch genuinely exists at the
+        # point of failure.
+        if cmd and cmd[0] == "cherry-pick":
+            raise GitError("Injected cherry-pick failure for rollback test")
+        return real_run_git(cmd, check_output=check_output, env=env)
+
+    monkeypatch.setattr(git_tidy, "run_git", failing_run_git)
+
+    with pytest.raises(SystemExit) as exc_info:
+        git_tidy.split_commits(base_ref=base_sha, no_prompt=True)
+
+    assert exc_info.value.code == 1
+
+    # HEAD must be restored to where it was before the command ran.
+    assert _current_head_sha(repo_path) == original_head
+
+    # The restore path also resets to ``original_head``; the on-disk tree
+    # must therefore still contain the multi-file commit's files.
+    for filename in ("x.py", "y.py", "z.py"):
+        assert (repo_path / filename).is_file(), (
+            f"expected {filename} to be restored after failure rollback"
+        )
+
+
+def test_split_commits_empty_range(
+    split_tmp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--base`` equal to HEAD must early-return cleanly with no orphan backup.
+
+    When the requested range contains zero commits, ``split_commits`` prints
+    "No commits found to split" and returns. The wrapper still creates a
+    backup at the start (via ``create_backup``) but cleans it up on the
+    early-return path. Asserting the externally observable backup-branch list
+    is empty afterwards locks that contract in.
+    """
+    repo_path, _ = _build_three_single_file_repo(split_tmp_dir)
+    head_sha = _current_head_sha(repo_path)
+
+    monkeypatch.chdir(repo_path)
+
+    git_tidy = GitTidy()
+
+    # Capture printed output to verify the early-return message.
+    printed: list[str] = []
+
+    def capture_print(*args: Any, **kwargs: Any) -> None:
+        printed.append(" ".join(str(a) for a in args))
+
+    monkeypatch.setattr("builtins.print", capture_print)
+
+    # base_ref == HEAD means ``HEAD..HEAD``: zero commits.
+    git_tidy.split_commits(base_ref=head_sha, no_prompt=True)
+
+    assert any(
+        "No commits found to split" in line for line in printed
+    ), f"expected early-return message, got: {printed!r}"
+
+    # No commits were created or destroyed.
+    assert _current_head_sha(repo_path) == head_sha
+
+    # No orphan backup branch remains. ``create_backup`` does run on the
+    # empty-range path, so this asserts that ``cleanup_backup`` correctly
+    # removed it on the way out.
+    assert _list_backup_branches(repo_path) == []
+
+
+def test_split_commits_single_file_only_range(
+    split_tmp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A range of single-file commits must pass through unchanged.
+
+    Builds a fixture with three commits each touching exactly one (different)
+    file. After ``split-commits``, all three commits must remain (count == 3,
+    not 6) and each commit's message must be the original message verbatim --
+    crucially, *no* ``split off`` prefix.
+    """
+    repo_path, base_sha = _build_three_single_file_repo(split_tmp_dir)
+    original_subjects = _commit_subjects(repo_path, base_sha)
+    assert original_subjects == ["S1: add alpha", "S2: add beta", "S3: add gamma"]
+
+    monkeypatch.chdir(repo_path)
+
+    git_tidy = GitTidy()
+    git_tidy.split_commits(base_ref=base_sha, no_prompt=True)
+
+    new_subjects = _commit_subjects(repo_path, base_sha)
+    assert new_subjects == original_subjects, (
+        f"single-file commits should be preserved verbatim, got {new_subjects!r}"
+    )
+
+    new_messages = _commit_messages(repo_path, base_sha)
+    assert len(new_messages) == 3, (
+        f"expected exactly 3 commits (not 6), got {len(new_messages)}: {new_messages!r}"
+    )
+    for message in new_messages:
+        assert not message.startswith("split off "), (
+            f"single-file commit got an unexpected 'split off' prefix: {message!r}"
+        )
+
+    # Successful split removes the backup branch on the way out.
+    assert _list_backup_branches(repo_path) == []
+
+
+# Suppress an unused-import complaint if pygit2 is not otherwise referenced
+# in this module. ``RepositoryBuilder`` already uses pygit2, but the import
+# above guarantees a clean failure mode if the dev dependency is missing.
+_ = pygit2

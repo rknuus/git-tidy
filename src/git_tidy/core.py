@@ -338,42 +338,33 @@ class GitTidy:
                 print("Split rebase cancelled")
                 return False
 
-        # Reset to base commit
+        # Reset hard to the base commit so the working tree is clean before
+        # we start cherry-picking. Using --hard (not --soft) is what makes the
+        # subsequent cherry-pick --no-commit safe: there are no unstaged local
+        # modifications to be overwritten by the 3-way merge.
         print(f"Resetting to base commit {base_commit[:8]}...")
-        self.run_git(["reset", "--soft", base_commit])
+        self.run_git(["reset", "--hard", base_commit])
 
-        # Create new commits for each file
-        new_commits = []
+        # Rebuild history one commit at a time, peeling multi-file commits
+        # into one commit per file via a stash dance.
+        new_commits: list[str] = []
         for commit in commits:
             files = sorted(commit["files"])
             original_message = self.get_commit_message(commit["sha"])
 
-            if len(files) <= 1:
-                # Single file or no files - create commit as-is
-                if files:
-                    # Cherry-pick the commit to get the changes
-                    self.run_git(["cherry-pick", "--no-commit", commit["sha"]])
-                    # Reset and add only the specific file
-                    self.run_git(["reset", "HEAD"])
-                    self.run_git(["add", files[0]])
-                    self.run_git(["commit", "-m", original_message])
-                    new_commits.append(original_message)
-                else:
-                    # Empty commit - just commit with message
-                    self.run_git(["commit", "--allow-empty", "-m", original_message])
-                    new_commits.append(original_message)
+            if len(files) == 0:
+                # Empty commit - preserve as an empty commit with original msg.
+                self.run_git(["commit", "--allow-empty", "-m", original_message])
+                new_commits.append(original_message)
+            elif len(files) == 1:
+                # Single-file commit - cherry-pick verbatim. The original
+                # commit message is preserved as-is (no "split off" prefix).
+                self.run_git(["cherry-pick", commit["sha"]])
+                new_commits.append(original_message)
             else:
-                # Multiple files - create separate commits for each file
-                for file in files:
-                    # Cherry-pick the commit to get the changes
-                    self.run_git(["cherry-pick", "--no-commit", commit["sha"]])
-                    # Reset and add only the specific file
-                    self.run_git(["reset", "HEAD"])
-                    self.run_git(["add", file])
-                    # Create commit with split message
-                    split_message = f"split off {file}\n\n{original_message}"
-                    self.run_git(["commit", "-m", split_message])
-                    new_commits.append(split_message)
+                self._emit_per_file_commits(
+                    commit["sha"], files, original_message, new_commits
+                )
 
         print(f"Successfully created {len(new_commits)} commits:")
         for i, message in enumerate(new_commits, 1):
@@ -381,6 +372,67 @@ class GitTidy:
             print(f"  {i}. {first_line}")
 
         return True
+
+    def _emit_per_file_commits(
+        self,
+        sha: str,
+        files: list[str],
+        original_message: str,
+        new_commits: list[str],
+    ) -> None:
+        """Decompose a multi-file commit into one commit per file.
+
+        Strategy: cherry-pick --no-commit applies all of the commit's changes
+        to the working tree (with everything staged). For every file except
+        the last we stage just that file, stash the rest with --keep-index
+        --include-untracked, commit, then pop the stash to restore the
+        remainder. The last file is committed without a stash dance because
+        nothing else needs to be preserved afterwards.
+        """
+        self.run_git(["cherry-pick", "--no-commit", sha])
+
+        last_index = len(files) - 1
+        for index, file in enumerate(files):
+            # Unstage everything (cherry-pick --no-commit staged it all; the
+            # next iteration's stash pop also leaves files unstaged).
+            self.run_git(["reset", "HEAD"])
+            self.run_git(["add", file])
+
+            split_message = f"split off {file}\n\n{original_message}"
+
+            if index < last_index:
+                # Stash the rest of the commit's changes so they don't get
+                # included in this per-file commit. --keep-index keeps the
+                # staged file in place; --include-untracked covers any new
+                # files introduced by the cherry-picked commit.
+                stash_label = f"ccpm-split-{sha[:8]}-{file}"
+                self.run_git(
+                    [
+                        "stash",
+                        "push",
+                        "--keep-index",
+                        "--include-untracked",
+                        "-m",
+                        stash_label,
+                    ]
+                )
+                self.run_git(["commit", "-m", split_message])
+                # Re-introduce the remaining changes for the next iteration.
+                # A conflict here would mean our peel logic is broken (the
+                # stashed paths must be disjoint from what we just committed);
+                # drop the stash and fail loudly so the outer rollback runs.
+                pop_result = self.run_git(["stash", "pop"], check_output=False)
+                if pop_result.returncode != 0:
+                    self.run_git(["stash", "drop"], check_output=False)
+                    raise GitError(
+                        "stash pop conflicted while peeling commit "
+                        f"{sha[:8]} (file {file}); aborting split"
+                    )
+            else:
+                # Last file: commit without stashing - nothing left to keep.
+                self.run_git(["commit", "-m", split_message])
+
+            new_commits.append(split_message)
 
     def split_commits(
         self, base_ref: Optional[str] = None, no_prompt: bool = False
